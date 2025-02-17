@@ -1,0 +1,19 @@
+[project]
+name = "zephyr-python"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "api-generator",
+    "grpcio-tools>=1.70.0",
+    "protorpc",
+    "protorpcheader",
+    "testrpc",
+]
+
+[tool.uv.sources]
+protorpc = { path = "protorpc", editable = true }
+api-generator = { path = "api_generator", editable = true }
+testrpc = { path = "testrpc", editable = true }
+protorpcheader = { path = "protorpcheader", editable = true }
