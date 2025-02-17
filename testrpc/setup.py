@@ -9,12 +9,12 @@ from pathlib import Path
 
 THIS_DIR = osp.dirname(__file__)
 
-
+##############################################################################
 NAME = "testrpc"
 PROTO_FILE = "TestRpc"
 DESC = ""
 VERSION = "0.1.0"
-
+##############################################################################
 
 name_lower = NAME.lower()
 debug_prefix = f"[{name_lower}]:"

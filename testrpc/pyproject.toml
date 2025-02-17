@@ -1,3 +1,19 @@
+[project]
+name = "testrpc"
+version = "0.1.0"
+description = "Package for testrpc bindings and cli interface."
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1.8",
+    "betterproto[compiler]==2.0.0b6",
+    "logging-tree>=1.10",
+    "rich>=13.9.4",
+]
+
+[project.scripts]
+testrpc-cli = "testrpc.cli:entrypoint"
+
+
 [build-system]
 requires = ["setuptools", "grpcio-tools", "betterproto[compiler]==2.0.0b6"]
 build-backend = "setuptools.build_meta"
