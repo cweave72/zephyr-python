@@ -11,7 +11,7 @@ class ProtoRpcException(Exception):
 class CallsetBase:
 
     def __init__(self, api):
-        self.api = api[f"{self.name}_callset"]
+        self.api = api[f"{self.name}"]
 
     def check_reply(self, reply):
         if not reply.success:

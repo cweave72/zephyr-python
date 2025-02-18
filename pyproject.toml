@@ -10,6 +10,7 @@ dependencies = [
     "protorpc",
     "protorpcheader",
     "testrpc",
+    "systemrpc",
 ]
 
 [tool.uv.sources]
@@ -17,3 +18,4 @@ protorpc = { path = "protorpc", editable = true }
 api-generator = { path = "api_generator", editable = true }
 protorpcheader = { path = "protorpcheader", editable = true }
 testrpc = { path = "testrpc", editable = true }
+systemrpc = { path = "systemrpc", editable = true }

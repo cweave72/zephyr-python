@@ -1,7 +1,7 @@
 [project]
-name = "testrpc"
+name = "systemrpc"
 version = "0.1.0"
-description = "Package for testrpc bindings and cli interface."
+description = "Package for systemrpc bindings and cli interface."
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.1.3",
@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-testrpc-cli = "testrpc.cli:entrypoint"
+systemrpc-cli = "systemrpc.cli:entrypoint"
 
 
 [build-system]
