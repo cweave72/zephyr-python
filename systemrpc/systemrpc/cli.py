@@ -43,9 +43,26 @@ def cli(ctx, **kwargs):
     connections.append(conn)
     atexit.register(on_exit)
 
-    logger.info(f"api={api}")
+    logger.debug(f"api={api}")
     system = SystemRpc(api)
     ctx.obj['sys'] = system
+
+
+@cli.command()
+@click.pass_context
+def trace_enable(ctx, **kwargs):
+    """RPC to enable tracing."""
+    #params = get_params(**kwargs)
+
+    system = ctx.obj["sys"]
+    try:
+        system.enable_trace()
+    except Exception as e:
+        logger.error(f"{str(e)}")
+        return
+
+    state, count = system.get_trace_status()
+    logger.info(f"Trace status: state={state}; count={count}")
 
 
 @cli.command()
@@ -57,23 +74,23 @@ def dump_trace(ctx, **kwargs):
 
     system = ctx.obj["sys"]
 
-    # Get trace address info.
-    addr, size = system.get_trace_addr()
-    logger.info(f"Trace addr: 0x{addr:08x}; {size} bytes.")
+    trace_bytes = system.dump_traceram()
+    logger.info(f"Read {len(trace_bytes)} trace bytes.")
 
-    if size == 0:
-        logger.error("Trace buffer size is zero.")
-        return
+    if len(trace_bytes) > 0:
+        p = Path(params.file)
+        p.write_bytes(trace_bytes)
+        logger.info(f"Wrote {len(trace_bytes)} to {str(p)}.")
 
-    try:
-        bytes_read = system.get_memory(addr, size)
-    except Exception as e:
-        logger.error(f"{str(e)}")
-        return
+@cli.command()
+@click.pass_context
+def trace_status(ctx, **kwargs):
+    """RPC to get trace status."""
+    #params = get_params(**kwargs)
 
-    p = Path(params.file)
-    p.write_bytes(bytes_read)
-    logger.info(f"Wrote {len(bytes_read)} to {str(p)}.")
+    system = ctx.obj["sys"]
+    state, count = system.get_trace_status()
+    logger.info(f"Trace status: state={state}; count={count}")
 
 
 def entrypoint():

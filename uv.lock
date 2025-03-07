@@ -576,6 +576,25 @@ wheels = [
 ]
 
 [[package]]
+name = "systemrpc"
+version = "0.1.0"
+source = { editable = "systemrpc" }
+dependencies = [
+    { name = "betterproto", extra = ["compiler"] },
+    { name = "click" },
+    { name = "logging-tree" },
+    { name = "rich" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "betterproto", extras = ["compiler"], specifier = "==2.0.0b6" },
+    { name = "click", specifier = ">=8.1.3" },
+    { name = "logging-tree", specifier = ">=1.10" },
+    { name = "rich", specifier = ">=13.9.4" },
+]
+
+[[package]]
 name = "testrpc"
 version = "0.1.0"
 source = { editable = "testrpc" }
@@ -589,7 +608,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "betterproto", extras = ["compiler"], specifier = "==2.0.0b6" },
-    { name = "click", specifier = ">=8.1.8" },
+    { name = "click", specifier = ">=8.1.3" },
     { name = "logging-tree", specifier = ">=1.10" },
     { name = "rich", specifier = ">=13.9.4" },
 ]
@@ -634,6 +653,21 @@ wheels = [
 ]
 
 [[package]]
+name = "trace-tool"
+version = "0.1.0"
+source = { editable = "trace_tool" }
+dependencies = [
+    { name = "click" },
+    { name = "rich" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1.8" },
+    { name = "rich", specifier = ">=13.9.4" },
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.12.2"
 source = { registry = "https://pypi.org/simple" }
@@ -651,7 +685,9 @@ dependencies = [
     { name = "grpcio-tools" },
     { name = "protorpc" },
     { name = "protorpcheader" },
+    { name = "systemrpc" },
     { name = "testrpc" },
+    { name = "trace-tool" },
 ]
 
 [package.metadata]
@@ -660,5 +696,7 @@ requires-dist = [
     { name = "grpcio-tools", specifier = ">=1.70.0" },
     { name = "protorpc", editable = "protorpc" },
     { name = "protorpcheader", editable = "protorpcheader" },
+    { name = "systemrpc", editable = "systemrpc" },
     { name = "testrpc", editable = "testrpc" },
+    { name = "trace-tool", editable = "trace_tool" },
 ]

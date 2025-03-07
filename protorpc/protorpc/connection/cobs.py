@@ -128,7 +128,6 @@ class Deframer:
 
             elif self.state == "FIND_EOF":
                 if self.q.empty():
-                    self.state = "INIT"
                     return None
 
                 while True:
@@ -136,7 +135,6 @@ class Deframer:
                         byte = self.q.get_nowait()
                     except queue.Empty:
                         logger.debug("DEFRAMER: FIND_EOF: fifo empty.")
-                        self.state = "INIT"
                         return None
                     except Exception as e:
                         logger.error(f"{str(e)}")

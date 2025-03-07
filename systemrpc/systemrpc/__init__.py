@@ -6,6 +6,10 @@ logger.addHandler(logging.NullHandler())
 
 MAX_READ_CHUNK_SIZE = 1000
 
+class SystemRpcError(Exception):
+    pass
+
+
 class SystemRpc(CallsetBase):
     """Class which provides access to the Lfs_PartRpc callset.
     """
@@ -13,14 +17,6 @@ class SystemRpc(CallsetBase):
 
     def __init__(self, api):
         super().__init__(api)
-
-    def get_trace_addr(self):
-        """Gets Tracing memory information.
-        Returns tuple (addr, size)
-        """
-        reply = self.api.gettraceramaddr()
-        self.check_reply(reply)
-        return reply.result.address, reply.result.size
 
     def dump_mem(self, addr: int, size: int) -> bytes:
         """Dumps memory.
@@ -62,3 +58,66 @@ class SystemRpc(CallsetBase):
             raise e
 
         return bytes_read
+
+    def dump_traceram(self, chunk_size=2000):
+        """Dumps current contents of traceram.
+        Returns bytearay)
+        """
+        # First disable trace ram
+        logger.info("Diabling trace.")
+        try:
+            self.disable_trace()
+        except Exception as e:
+            logger.error(f"{str(e)}")
+            return bytearray()
+
+        # Get status
+        state, count = self.get_trace_status()
+        logger.info(f"Trace ram: state={state}; count={count}")
+
+        # Read until empty.
+        ram = bytearray()
+        num = 0
+        empty_on_read = False
+        while not empty_on_read:
+            empty_on_read, buf = self.get_next_traceram(chunk_size)
+            ram += buf
+            num += len(buf)
+            logger.info("get_next_traceram: "
+                        f"empty={empty_on_read}; len={len(buf)}; total={num}")
+
+        logger.info("Re-enabling trace.")
+        self.enable_trace()
+        return ram
+
+    def enable_trace(self):
+        """Enables tracing.
+        """
+        reply = self.api.enabletraceram()
+        self.check_reply(reply)
+        if reply.result.state != 1:
+            raise SystemRpcError("Error enabling trace.")
+
+    def disable_trace(self):
+        """Disables tracing.
+        """
+        reply = self.api.disabletraceram()
+        self.check_reply(reply)
+        if reply.result.state != 0:
+            raise SystemRpcError("Error disabling trace.")
+
+    def get_trace_status(self):
+        """Gets trace ram status.
+        Returns (state, count)
+        """
+        reply = self.api.gettraceramstatus()
+        self.check_reply(reply)
+        return reply.result.state, reply.result.count
+
+    def get_next_traceram(self, max_size: int):
+        """Gets trace ram buffer.
+        Returns (empty_on_read, bytearray).
+        """
+        reply = self.api.getnexttraceram(max_size)
+        self.check_reply(reply)
+        return reply.result.empty_on_read, reply.result.data

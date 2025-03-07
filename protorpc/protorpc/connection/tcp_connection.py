@@ -80,6 +80,8 @@ class TcpConnection(BaseConnection):
                 logger.debug("recv returned None")
                 return None
 
+            logger.debug(f"read_loop: socket.recv: {len(data)}")
+
             msg = self.deframer.process(data)
             if msg:
                 logger.debug(f"Received data[{len(data)}]={self.bytes_to_hex(data, 64)}")
