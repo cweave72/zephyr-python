@@ -7,7 +7,7 @@ from rich.pretty import Pretty
 from rich import box
 
 from trace_tool import bytesToHexStr
-from trace_tool.ctf_config import EventFrame
+from trace_tool.ctf_config import EventFrame, EventError
 
 
 logger = logging.getLogger(__name__)
@@ -19,29 +19,67 @@ class TraceParserError(Exception):
 
 
 class TraceParser:
-    def __init__(self, tracefile: str):
+    def __init__(self, tracefile: str, ext_events=None):
         if not Path(tracefile).exists():
             raise TraceParserError(f"Trace file {tracefile} does not exist.")
 
         self.f = Path(tracefile)
+        self.data = self.f.read_bytes()
+        self.ext_events = ext_events
+        self.start_idx = 0
+        self.found_start = False
         self.items = []
+
+    def sync_start(self):
+        """Synchronizes the data to the first event frame, eliminating
+        fragment located at the beginning due to circular trace ram.
+        """
+        idx = 0
+        sync_count = 0
+        hdr_size = EventFrame.get_hdr_size()
+        test_start = idx
+        while idx < len(self.data):
+            try:
+                frame = EventFrame(self.data[test_start:], ext_events=self.ext_events)
+                sync_count += 1
+                logger.debug(
+                    f"Possible event frame @ test_start={test_start} ({sync_count}).")
+                test_start += frame.event.size + hdr_size
+                logger.debug(f"Looking ahead for next frame @ test_start={test_start}")
+            except Exception as e:
+                logger.debug(f"No sync at test_start={test_start}: {str(e)}")
+                idx += 1
+                test_start = idx
+                sync_count = 0
+
+            if sync_count == 15:
+                logger.info(f"Found start of trace at idx={idx}")
+                self.start_idx = idx
+                self.found_start = True
+                return
+
+        raise TraceParserError("Could not sync to start of trace date.")
 
     def parse_events(self, max_items=None):
         """Parses a bytestream to an array of Events."""
 
-        data = self.f.read_bytes()
+        if not self.found_start:
+            self.sync_start()
+
         self.items = []
-        cursor = 0
+        cursor = self.start_idx
 
         while True:
-            if cursor >= len(data):
+            if cursor >= len(self.data):
                 break
 
-            ev = EventFrame(data[cursor:])
+            logger.debug(f"cursor={cursor} (0x{cursor:08x}) "
+                         f"data={bytesToHexStr(self.data[cursor : cursor + 16])}")
+            ev = EventFrame(self.data[cursor:], ext_events=self.ext_events)
             if not ev.success:
                 raise TraceParserError(
                     f"EventFrame error at cursor={cursor} "
-                    f"(data={bytesToHexStr(data[cursor : cursor + 16])}..."
+                    f"(data={bytesToHexStr(self.data[cursor : cursor + 16])}..."
                 )
 
             cursor += ev.event_frame_size
@@ -79,8 +117,8 @@ class TraceParser:
         table = Table(title="Trace", box=box.ROUNDED)
 
         table.add_column("Time", style="magenta")
-        table.add_column("Elapsed", style="yellow")
-        table.add_column("Run", style="yellow")
+        table.add_column("Elapsed (ms)", style="yellow")
+        table.add_column("Run (ms)", style="yellow")
         table.add_column("Thread Name", style="cyan")
         table.add_column("Event", style="blue")
         table.add_column("Parameters", style="orange3")
@@ -91,7 +129,7 @@ class TraceParser:
         for k, item in enumerate(self.items):
             event = item.event
 
-            run = self.calc_delta(stamp_next, item.timestamp)
+            run = self.calc_delta(stamp_next, item.timestamp)/1e6
             thread_name = ""
 
             thread_name = self.get_thread_name(event)
@@ -103,8 +141,8 @@ class TraceParser:
 
             rows = []
             rows.append(f"0x{item.timestamp:08x}")
-            rows.append(Pretty(elapsed))
-            rows.append(f"{run}")
+            rows.append(f"{elapsed:.3f}")
+            rows.append(f"{run:.3f}")
             rows.append(thread_name)
             rows.append(str(event))
             rows.append(", ".join(field_params))

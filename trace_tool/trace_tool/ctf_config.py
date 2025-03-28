@@ -15,7 +15,8 @@ uint32 = "I"
 int32 = "i"
 uint16 = "H"
 int16 = "h"
-ctf_str = "20s"
+ctf_str20 = "20s"
+ctf_str46 = "46s"
 
 
 class EventError(Exception):
@@ -39,6 +40,8 @@ class EventBase:
         "thread_id": _hex32,
         "thread_name": _bytesstr,
         "address": _bytesstr,
+        "iface": _hex32,
+        "pkt": _hex32,
     }
 
     def __init__(self, data: bytes):
@@ -73,25 +76,32 @@ class EventFrame:
     hdrfmt = f"{le}{uint32}{uint8}"
     fields = ("timestamp", "id")
 
-    def __init__(self, data: bytes):
+    def __init__(self, data: bytes, ext_events=None):
         self.hdrsize = struct.calcsize(self.hdrfmt)
         self.hdr_data = data[: self.hdrsize]
         self.event = None
         self.success = False
 
-        try:
-            self.hdr_unpack()
-            cls = events.get(self.id)
-            self.event = cls(data[self.hdrsize :])
-            self.event_frame_size = self.hdrsize + self.event.size
-            self.success = True
-            logger.debug(f"{repr(self)}, {repr(self.event)}")
-        except KeyError:
-            msg = f"Unknown event id: 0x{self.id:02x}"
-            logger.error(msg)
+        if ext_events is not None:
+            self.events = {**core_events, **ext_events}
+        else:
+            self.events = core_events
+
+        self.hdr_unpack()
+        cls = self.events.get(self.id)
+        if cls is None:
+            msg = (f"Unknown event id: 0x{self.id:02x} "
+                   f"hdr={bytesToHexStr(self.hdr_data)}")
             raise EventError(msg)
-        except Exception as e:
-            logger.exception(f"{str(e)}; hdr={bytesToHexStr(self.hdr_data)}")
+        self.event = cls(data[self.hdrsize :])
+        self.event_frame_size = self.hdrsize + self.event.size
+        self.success = True
+        logger.debug(f"{repr(self)}, {repr(self.event)}")
+
+    @classmethod
+    def get_hdr_size(cls):
+        """Gets the size of the header, in bytes."""
+        return struct.calcsize(cls.hdrfmt)
 
     def hdr_unpack(self):
         unpacked = struct.unpack(self.hdrfmt, self.hdr_data)
@@ -109,57 +119,57 @@ class EventFrame:
 
 
 class thread_switched_out(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
 class thread_switched_in(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
 class thread_priority_set(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}{int8}"
+    fmt = f"{le}{uint32}{ctf_str20}{int8}"
     fields = ("thread_id", "thread_name", "prio")
 
 
 class thread_create(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
 class thread_abort(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
 class thread_suspend(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
 class thread_resume(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
 class thread_ready(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
 class thread_pending(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
 class thread_info(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}{uint32}{uint32}"
+    fmt = f"{le}{uint32}{ctf_str20}{uint32}{uint32}"
     fields = ("thread_id", "thread_name", "stack_base", "stack_size")
 
 
 class thread_name_set(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
@@ -275,12 +285,12 @@ class timer_status_sync_exit(EventBase):
 
 
 class user_mode_enter(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
 class thread_wakeup(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}"
+    fmt = f"{le}{uint32}{ctf_str20}"
     fields = ("thread_id", "thread_name")
 
 
@@ -310,7 +320,7 @@ class socket_shutdown_exit(EventBase):
 
 
 class socket_bind_enter(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}{uint32}{uint16}"
+    fmt = f"{le}{uint32}{ctf_str46}{uint32}{uint16}"
     fields = ("id", "address", "address_len", "port")
 
 
@@ -320,7 +330,7 @@ class socket_bind_exit(EventBase):
 
 
 class socket_connect_enter(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}{uint32}"
+    fmt = f"{le}{uint32}{ctf_str46}{uint32}"
     fields = ("id", "address", "address_len")
 
 
@@ -345,12 +355,12 @@ class socket_accept_enter(EventBase):
 
 
 class socket_accept_exit(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}{uint32}{uint16}{int32}"
+    fmt = f"{le}{uint32}{ctf_str46}{uint32}{uint16}{int32}"
     fields = ("id", "address", "address_len", "port", "result")
 
 
 class socket_sendto_enter(EventBase):
-    fmt = f"{le}{uint32}{uint32}{uint32}{ctf_str}{uint32}"
+    fmt = f"{le}{uint32}{uint32}{uint32}{ctf_str46}{uint32}"
     fields = ("id", "data_length", "flags", "address", "address_len")
 
 
@@ -360,7 +370,7 @@ class socket_sendto_exit(EventBase):
 
 
 class socket_sendmsg_enter(EventBase):
-    fmt = f"{le}{uint32}{uint32}{uint32}{ctf_str}{uint32}"
+    fmt = f"{le}{uint32}{uint32}{uint32}{ctf_str46}{uint32}"
     fields = ("id", "flags", "msghdr", "address", "data_length")
 
 
@@ -371,11 +381,11 @@ class socket_sendmsg_exit(EventBase):
 
 class socket_recvfrom_enter(EventBase):
     fmt = f"{le}{uint32}{uint32}{uint32}{uint32}{uint32}"
-    fields = ("id", "max_length", "flags", "address", "address_len")
+    fields = ("id", "max_length", "flags", "address_int", "address_len")
 
 
 class socket_recvfrom_exit(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}{uint32}{int32}"
+    fmt = f"{le}{uint32}{ctf_str46}{uint32}{int32}"
     fields = ("id", "address", "address_len", "result")
 
 
@@ -385,7 +395,7 @@ class socket_recvmsg_enter(EventBase):
 
 
 class socket_recvmsg_exit(EventBase):
-    fmt = f"{le}{uint32}{uint32}{ctf_str}{int32}"
+    fmt = f"{le}{uint32}{uint32}{ctf_str46}{int32}"
     fields = ("id", "msg_length", "address", "result")
 
 
@@ -450,7 +460,7 @@ class socket_getpeername_enter(EventBase):
 
 
 class socket_getpeername_exit(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}{uint32}{int32}"
+    fmt = f"{le}{uint32}{ctf_str46}{uint32}{int32}"
     fields = ("id", "address", "address_len", "result")
 
 
@@ -460,7 +470,7 @@ class socket_getsockname_enter(EventBase):
 
 
 class socket_getsockname_exit(EventBase):
-    fmt = f"{le}{uint32}{ctf_str}{uint32}{int32}"
+    fmt = f"{le}{uint32}{ctf_str46}{uint32}{int32}"
     fields = ("id", "address", "address_len", "result")
 
 
@@ -519,7 +529,7 @@ class net_tx_time(EventBase):
 
 
 class named_event(EventBase):
-    fmt = f"{le}{ctf_str}{uint32}{uint32}"
+    fmt = f"{le}{ctf_str20}{uint32}{uint32}"
     fields = ("name", "arg0", "arg1")
 
     def __init__(self, *args, **kwargs):
@@ -532,7 +542,7 @@ class user_0(EventBase):
 
 
 # Event IDs
-events = {
+core_events = {
     0x10: thread_switched_out,
     0x11: thread_switched_in,
     0x12: thread_priority_set,
@@ -548,8 +558,8 @@ events = {
     0x1C: isr_exit,
     0x1D: isr_exit_to_scheduler,
     0x1E: idle,
-    0x1F: "ID_START_CALL",
-    0x20: "ID_END_CALL",
+    0x1F: None, #"ID_START_CALL",
+    0x20: None, #"ID_END_CALL",
     0x21: semaphore_init,
     0x22: semaphore_give_enter,
     0x23: semaphore_give_exit,

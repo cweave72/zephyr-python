@@ -45,14 +45,14 @@ def cli(ctx, **kwargs):
 
     logger.debug(f"api={api}")
     system = SystemRpc(api)
-    ctx.obj['sys'] = system
+    ctx.obj["sys"] = system
 
 
 @cli.command()
 @click.pass_context
 def trace_enable(ctx, **kwargs):
     """RPC to enable tracing."""
-    #params = get_params(**kwargs)
+    # params = get_params(**kwargs)
 
     system = ctx.obj["sys"]
     try:
@@ -66,7 +66,14 @@ def trace_enable(ctx, **kwargs):
 
 
 @cli.command()
-@click.option("--file", type=str, required=True, help="File name to write.")
+@click.option(
+    "-o",
+    "--out",
+    type=str,
+    default="trace_dump.dat",
+    show_default=True,
+    help="File name to write.",
+)
 @click.pass_context
 def dump_trace(ctx, **kwargs):
     """RPC to dump trace ram to file."""
@@ -78,15 +85,16 @@ def dump_trace(ctx, **kwargs):
     logger.info(f"Read {len(trace_bytes)} trace bytes.")
 
     if len(trace_bytes) > 0:
-        p = Path(params.file)
+        p = Path(params.out)
         p.write_bytes(trace_bytes)
         logger.info(f"Wrote {len(trace_bytes)} to {str(p)}.")
+
 
 @cli.command()
 @click.pass_context
 def trace_status(ctx, **kwargs):
     """RPC to get trace status."""
-    #params = get_params(**kwargs)
+    # params = get_params(**kwargs)
 
     system = ctx.obj["sys"]
     state, count = system.get_trace_status()

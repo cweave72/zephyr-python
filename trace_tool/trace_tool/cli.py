@@ -6,6 +6,7 @@ from rich import inspect
 import click
 
 from trace_tool.ctf_parser import TraceParser
+from trace_tool.ext_events import tracemodule_event
 
 logger = logging.getLogger()
 
@@ -84,7 +85,7 @@ def table(ctx, **kwargs):
     """Display trace table. """
     params = get_params(**kwargs)
 
-    parser = TraceParser(params.file)
+    parser = TraceParser(params.file, ext_events=tracemodule_event)
     table = parser.build_table()
     con = Console()
     if params.pager:
