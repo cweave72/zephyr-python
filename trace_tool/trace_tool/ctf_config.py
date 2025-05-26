@@ -2,39 +2,42 @@ import struct
 import logging
 from rich import inspect
 
+import trace_tool.fmt_types as ft
 from trace_tool import bytesToHexStr
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
-# little-endian
-le = "<"
-int8 = "b"
-uint8 = "B"
-uint32 = "I"
-int32 = "i"
-uint16 = "H"
-int16 = "h"
-ctf_str20 = "20s"
-ctf_str46 = "46s"
-
+le        = ft.le       
+int8      = ft.int8     
+uint8     = ft.uint8    
+uint32    = ft.uint32   
+int32     = ft.int32    
+uint16    = ft.uint16   
+int16     = ft.int16    
+ctf_str20 = ft.ctf_str20
+ctf_str46 = ft.ctf_str46
 
 class EventError(Exception):
     pass
 
 
 def _hex32(a: int):
+    "Coverts an int to hex32."
     return f"0x{a:08x}"
 
 
 def _bytesstr(a: bytes):
+    "Coverts and decodes a byte string."
     return a.decode('utf-8').strip('\x00')
 
 
 class EventBase:
     """Base class for events."""
 
+    # Fields tuple to be overridden by subclass.
     fields = ()
+    # Field converters.
     fields_conv = {
         "id": _hex32,
         "thread_id": _hex32,
@@ -54,6 +57,8 @@ class EventBase:
         self.unpack()
 
     def unpack(self):
+        """Unpacks an event based on the specified class fmt and fields.
+        """
         unpacked = struct.unpack(self.fmt, self.data)
         try:
             for f, v in zip(self.fields, unpacked):
@@ -73,19 +78,23 @@ class EventBase:
 
 
 class EventFrame:
+    """Class which encapsulates and parses an inidividual ctf event frame.
+    """
+    # Format of the event frame header.
     hdrfmt = f"{le}{uint32}{uint8}"
+    # Fields of the event frame header.
     fields = ("timestamp", "id")
 
-    def __init__(self, data: bytes, ext_events=None):
+    # External events (i.e. non-core event classes)
+    ext_events = {}
+
+    def __init__(self, data: bytes):
         self.hdrsize = struct.calcsize(self.hdrfmt)
         self.hdr_data = data[: self.hdrsize]
         self.event = None
         self.success = False
 
-        if ext_events is not None:
-            self.events = {**core_events, **ext_events}
-        else:
-            self.events = core_events
+        self.events = {**core_events, **self.ext_events}
 
         self.hdr_unpack()
         cls = self.events.get(self.id)
@@ -103,6 +112,13 @@ class EventFrame:
         """Gets the size of the header, in bytes."""
         return struct.calcsize(cls.hdrfmt)
 
+    @classmethod
+    def register_ext_events(cls, ext_events: dict):
+        """Adds external events to the EventFrame class.
+        """
+        logger.info(f"EventFrame: Registering external events: {ext_events}")
+        cls.ext_events = ext_events
+
     def hdr_unpack(self):
         unpacked = struct.unpack(self.hdrfmt, self.hdr_data)
         try:
@@ -117,6 +133,7 @@ class EventFrame:
             f"time=0x{self.timestamp:08x}, type={str(self.event)})"
         )
 
+# Event classes for core Zephyr events.
 
 class thread_switched_out(EventBase):
     fmt = f"{le}{uint32}{ctf_str20}"

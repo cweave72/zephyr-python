@@ -1,0 +1,10 @@
+# little-endian
+le = "<"
+int8 = "b"
+uint8 = "B"
+uint32 = "I"
+int32 = "i"
+uint16 = "H"
+int16 = "h"
+ctf_str20 = "20s"
+ctf_str46 = "46s"

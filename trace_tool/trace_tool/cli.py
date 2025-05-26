@@ -6,7 +6,8 @@ from rich import inspect
 import click
 
 from trace_tool.ctf_parser import TraceParser
-from trace_tool.ext_events import tracemodule_event
+from tracemodule import tracemodule_event
+#from trace_tool.ext_events import tracemodule_event
 
 logger = logging.getLogger()
 

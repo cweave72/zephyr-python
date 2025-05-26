@@ -19,13 +19,13 @@ class TraceParserError(Exception):
 
 
 class TraceParser:
-    def __init__(self, tracefile: str, ext_events=None):
+    def __init__(self, tracefile: str, ext_events={}):
         if not Path(tracefile).exists():
             raise TraceParserError(f"Trace file {tracefile} does not exist.")
 
         self.f = Path(tracefile)
         self.data = self.f.read_bytes()
-        self.ext_events = ext_events
+        EventFrame.register_ext_events(ext_events)
         self.start_idx = 0
         self.found_start = False
         self.items = []
@@ -40,12 +40,15 @@ class TraceParser:
         test_start = idx
         while idx < len(self.data):
             try:
-                frame = EventFrame(self.data[test_start:], ext_events=self.ext_events)
+                frame = EventFrame(self.data[test_start:])
                 sync_count += 1
                 logger.debug(
-                    f"Possible event frame @ test_start={test_start} ({sync_count}).")
+                    f"Possible event frame @ test_start={test_start} ({sync_count})."
+                )
                 test_start += frame.event.size + hdr_size
-                logger.debug(f"Looking ahead for next frame @ test_start={test_start}")
+                logger.debug(
+                    f"Looking ahead for next frame @ test_start={test_start}"
+                )
             except Exception as e:
                 logger.debug(f"No sync at test_start={test_start}: {str(e)}")
                 idx += 1
@@ -73,9 +76,11 @@ class TraceParser:
             if cursor >= len(self.data):
                 break
 
-            logger.debug(f"cursor={cursor} (0x{cursor:08x}) "
-                         f"data={bytesToHexStr(self.data[cursor : cursor + 16])}")
-            ev = EventFrame(self.data[cursor:], ext_events=self.ext_events)
+            logger.debug(
+                f"cursor={cursor} (0x{cursor:08x}) "
+                f"data={bytesToHexStr(self.data[cursor : cursor + 16])}"
+            )
+            ev = EventFrame(self.data[cursor:])
             if not ev.success:
                 raise TraceParserError(
                     f"EventFrame error at cursor={cursor} "
@@ -129,7 +134,7 @@ class TraceParser:
         for k, item in enumerate(self.items):
             event = item.event
 
-            run = self.calc_delta(stamp_next, item.timestamp)/1e6
+            run = self.calc_delta(stamp_next, item.timestamp) / 1e6
             thread_name = ""
 
             thread_name = self.get_thread_name(event)
