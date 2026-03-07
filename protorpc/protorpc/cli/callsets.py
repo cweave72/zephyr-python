@@ -42,11 +42,12 @@ def get_callsets(callset_dict: dict):
     """
     callsets = []
     for _id in callset_dict:
+        name = callset_dict[_id]['name']
         pkg_name = callset_dict[_id]['pkg']
         mod_name = callset_dict[_id]['mod']
         cls_name = callset_dict[_id]['cls']
         cls = import_class(pkg_name, mod_name, cls_name)
-        logger.debug(f"Callset id: {_id} -> {pkg_name}.{mod_name}.{cls_name}")
-        callsets.append((cls, _id))
+        logger.debug(f"Callset {name} [id={_id}] -> {pkg_name}.{mod_name}.{cls_name}")
+        callsets.append((cls, _id, name))
 
     return callsets

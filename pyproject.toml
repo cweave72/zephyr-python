@@ -11,6 +11,7 @@ dependencies = [
     "protorpcheader",
     "testrpc",
     "systemrpc",
+    "rtosutils",
     "trace-tool",
     "tracemodule",
 ]
@@ -21,5 +22,6 @@ api-generator = { path = "api_generator", editable = true }
 protorpcheader = { path = "protorpcheader", editable = true }
 testrpc = { path = "testrpc", editable = true }
 systemrpc = { path = "systemrpc", editable = true }
+rtosutils = { path = "rtosutils", editable = true }
 trace-tool = { path = "trace_tool", editable = true }
 tracemodule = { path = "tracemodule", editable = true }

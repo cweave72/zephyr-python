@@ -52,7 +52,7 @@ def setup_logging(rootlogger, level, logfile=None):
 def build_api(header_cls, callsets: List[tuple], **kwargs):
     """Builds the RPC api from the frame class.
     header_cls : Class for the RPC header.
-    callsets: [{callset_cls, id}, ...]
+    callsets: [{callset_cls, id, name}, ...]
     Accepts the following kwargs:
     protocol : ['tcp', 'udp']
     port     : some integer
@@ -79,13 +79,14 @@ def build_api(header_cls, callsets: List[tuple], **kwargs):
     api = {}
 
     # Process each callset provided.
-    for callset_cls, id_ in callsets:
+    for callset_cls, id_, name in callsets:
         parse_callset_fields(callset_cls, cs_id=id_)
 
     logger.debug(f"FrameDict={FrameDict}")
 
     for callset in FrameDict:
         logger.debug(f"Adding api for callset={callset}")
-        api[callset] = Api(header_cls, FrameDict[callset], conn)
+        #api[callset] = Api(header_cls, FrameDict[callset], conn)
+        api[name] = Api(header_cls, FrameDict[callset], conn)
 
     return api, conn
