@@ -41,6 +41,7 @@ class RtosUtils(CallsetBase):
     """Class which provides access to the RtosUtilsRpc callset.
     """
     name = "rtosutils"
+    version = "0.1.0"
 
     def __init__(self, api):
         super().__init__(api)

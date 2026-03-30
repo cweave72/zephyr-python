@@ -49,7 +49,15 @@ def setup_logging(rootlogger, level, logfile=None):
     rootlogger.addHandler(ch)
 
 
-def build_api(header_cls, callsets: List[tuple], **kwargs):
+def build_api(
+    header_cls,
+    callsets: List[tuple],
+    port: int,
+    protocol: str = 'tcp',
+    addr: str = None,
+    hostname: str = None,
+    **kwargs
+):
     """Builds the RPC api from the frame class.
     header_cls : Class for the RPC header.
     callsets: [{callset_cls, id, name}, ...]
@@ -59,7 +67,6 @@ def build_api(header_cls, callsets: List[tuple], **kwargs):
     addr     : server IP address (optional).
     hostname : server hostname (optional)
     """
-    protocol = kwargs.pop('protocol', 'tcp')
 
     supported_prots = ['tcp', 'udp']
 
@@ -70,13 +77,15 @@ def build_api(header_cls, callsets: List[tuple], **kwargs):
     connectCls = {'tcp': TcpConnection, 'udp': UdpConnection}[protocol]
     logger.debug(f"Using connection class={connectCls.__name__}")
     try:
-        conn = connectCls(**kwargs)
+        conn = connectCls(port, addr, hostname, **kwargs)
         conn.connect()
     except Exception as e:
         logger.error(f"build_api: Connection error ({protocol}).")
         raise ProtoRpcException(e)
 
     api = {}
+    if callsets is None or len(callsets) == 0:
+        return api, conn
 
     # Process each callset provided.
     for callset_cls, id_, name in callsets:
@@ -86,7 +95,6 @@ def build_api(header_cls, callsets: List[tuple], **kwargs):
 
     for callset in FrameDict:
         logger.debug(f"Adding api for callset={callset}")
-        #api[callset] = Api(header_cls, FrameDict[callset], conn)
         api[name] = Api(header_cls, FrameDict[callset], conn)
 
     return api, conn

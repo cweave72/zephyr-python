@@ -13,7 +13,8 @@ class SystemRpcError(Exception):
 class SystemRpc(CallsetBase):
     """Class which provides access to the Lfs_PartRpc callset.
     """
-    name = "SystemCallset"
+    name = "system"
+    version = "0.1.0"
 
     def __init__(self, api):
         super().__init__(api)

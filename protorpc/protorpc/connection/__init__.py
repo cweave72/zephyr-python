@@ -21,13 +21,22 @@ class BaseConnection(Thread):
     """Base connection class.
     """
 
-    def __init__(self, name, *args, **kwargs):
+    def __init__(
+        self,
+        name,
+        port: int,
+        addr: str = None,
+        hostname: str = None,
+        timeout: int = 2,
+        *args,
+        **kwargs
+    ):
 
         # Extract connection kwargs.
-        self.addr = kwargs.pop('addr', None)
-        self.hostname = kwargs.pop('hostname', None)
-        self.port = kwargs.pop('port', None)
-        self.timeout = kwargs.pop('timeout', 2)
+        self.addr = addr
+        self.hostname = hostname
+        self.port = port
+        self.timeout = timeout
 
         if all(item is None for item in [self.addr, self.hostname]):
             raise Exception("Either 'addr' or 'hostname' must be provided.")

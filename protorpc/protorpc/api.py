@@ -137,27 +137,35 @@ class Request:
         self,
         conn,
         header_cls,
-        callset_id,
-        callset_name,
-        callset_cls,
-        msg_name,
-        msg_inst,
+        callset_id=None,
+        callset_name=None,
+        callset_cls=None,
+        msg_name=None,
+        msg_inst=None,
         **kwargs
     ):
+        # Extract supported kwargs.
         self.no_reply = kwargs.pop('no_reply', False)
+        self.callset_query = kwargs.pop('callset_query', False)
+
         self.conn = conn
-        self.callset = callset_cls()
-        self.callset_id = callset_id
+
         self.header = header_cls()
-        self.reply = Reply(header_cls, callset_cls, msg_name, msg_inst)
+        self.reply = Reply(header_cls, callset_cls, msg_name, msg_inst,
+                           callset_query=self.callset_query)
+
+        self.callset = None
+        self.callset_id = callset_id
         self.got_reply = False
         self.timedout = False
 
         self.msg_name = msg_name
         self.msg_inst = msg_inst
 
-        # Set message instance to the frame callset attribute.
-        setattr(self.callset, msg_name, msg_inst)
+        if callset_cls is not None:
+            self.callset = callset_cls()
+            # Set message instance to the frame callset attribute.
+            setattr(self.callset, msg_name, msg_inst)
 
     def send(self, timeout=3):
         """Sends a serialized RPC frame using the underlying connection object.
@@ -165,20 +173,28 @@ class Request:
         self.header.seqn = self.conn.get_next_seqn()
         self.header.no_reply = self.no_reply
         self.header.which_callset = self.callset_id
+        self.header.callset_query = self.callset_query
+
+        if logger.level == logging.DEBUG:
+            logger.debug("Request header:")
+            inspect(self.header)
 
         # Encode header
         hdr_ser = self.header.SerializeToString()
         hdr_delim = encode_varint(len(hdr_ser))
         hdr_ser_bytes = hdr_delim + hdr_ser
-        #logger.debug(f"hdr_ser length: {len(hdr_ser)} --> {hdr_delim}")
-        #logger.debug(f"hdr_ser_bytes: {hdr_ser_bytes}")
+        logger.debug(f"hdr_ser length: {len(hdr_ser)} --> {hdr_delim=}")
+        logger.debug(f"hdr_ser_bytes: {hdr_ser_bytes}")
 
-        # Encode callset
-        callset_ser = self.callset.SerializeToString()
-        callset_delim = encode_varint(len(callset_ser))
-        callset_ser_bytes = callset_delim + callset_ser
-        #logger.debug(f"callset_ser length: {len(callset_ser)} --> {callset_delim}")
-        #logger.debug(f"callset_ser_bytes: {callset_ser_bytes}")
+        if self.callset is not None:
+            # Encode callset
+            callset_ser = self.callset.SerializeToString()
+            callset_delim = encode_varint(len(callset_ser))
+            callset_ser_bytes = callset_delim + callset_ser
+            #logger.debug(f"callset_ser length: {len(callset_ser)} --> {callset_delim}")
+            #logger.debug(f"callset_ser_bytes: {callset_ser_bytes}")
+        else:
+            callset_ser_bytes = bytearray()
 
         # The complete frame bytes
         ser = hdr_ser_bytes + callset_ser_bytes
@@ -219,12 +235,24 @@ class Reply:
     """RPC reply class.
     """
 
-    def __init__(self, header_cls, callset_cls, call_msg_name, call_msg_inst):
+    def __init__(
+        self,
+        header_cls,
+        callset_cls=None,
+        call_msg_name=None,
+        call_msg_inst=None,
+        callset_query=False,
+    ):
         # Save references to the call msg and instance.
-        self.callset = callset_cls()
+        self.callset = None
+        self.callset_query = callset_query
+        self.header = header_cls()
         self.call_msg = call_msg_name
         self.call_msg_inst = call_msg_inst
-        self.header = header_cls()
+
+        if callset_cls is not None:
+            self.callset = callset_cls()
+
         self.result = None
         self.success = False
         self.timedout = False
@@ -248,6 +276,10 @@ class Reply:
             data: The entire received frame.
             pos: The position of the callset varint delimiter.
         """
+        if len(data) == pos:
+            logger.debug("No callset data in frame.")
+            return
+
         try:
             callset_len, i = decode_varint(data[pos:])
             callset_start = pos + i
@@ -258,7 +290,8 @@ class Reply:
                 self.success = True if self.status == 0 else False
                 self.result = self.get_reply_value()
         except Exception as e:
-            logger.exception(f"Error on frame parse: {str(e)}")
+            logger.error(f"Error on frame parse: len(data)={len(data)}: {data=}, {pos=}")
+            logger.exception(f"Exception details: {str(e)}")
             raise e
 
     def get_reply_value(self):

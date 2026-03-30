@@ -9,18 +9,20 @@ from protorpc.connection.cobs import Deframer
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PORT = 13001
-
 
 class TcpConnection(BaseConnection):
     """A connection class using TCP + COBS.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        port: int,
+        addr: str = None,
+        hostname: str = None,
+        **kwargs):
 
         # Set the default port for TCP.
-        setdefault(kwargs, 'port', DEFAULT_PORT)
-        super().__init__('tcpconn', **kwargs)
+        super().__init__('tcpconn', port, addr, hostname, **kwargs)
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.deframer = Deframer()
         self.is_connected = False

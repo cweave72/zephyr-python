@@ -2,6 +2,7 @@ import sys
 import os
 import os.path as osp
 import setuptools
+import yaml
 
 from grpc_tools.protoc import main as protoc
 from importlib import resources
@@ -12,6 +13,8 @@ THIS_DIR = osp.dirname(__file__)
 ##############################################################################
 NAME = "rtosutils"
 PROTO_FILE = "RtosUtilsRpc"
+PROTO_MOD_NAME = "rtosutils"
+CALLSET_NAME = "Callset"
 DESC = ""
 VERSION = "0.1.0"
 ##############################################################################
@@ -24,6 +27,9 @@ save_stdout = sys.stdout
 fp = open(f"{name_lower}.log", 'w')
 sys.stdout = fp
 
+# Base path to location of registry files.
+REGISTRY_BASE = f"{str(Path.home())}/.local/share/protorpc/registry"
+REGISTRY_FILE = f"{REGISTRY_BASE}/{NAME.lower()}.yaml"
 
 def find_protos():
     p = Path(PROTO_BASE)
@@ -40,6 +46,26 @@ def find_proto(protos, proto_name):
             return proto
 
     return None
+
+
+def create_registry(pkg_name, mod_name, cls_name):
+    """Creates a registry file for the generated bindings for use by
+    applications using the generated API.
+    """
+    # Create registry directory if it doesn't exist.
+    Path(REGISTRY_BASE).mkdir(parents=True, exist_ok=True)
+
+    entry = {
+        "package": f"{pkg_name}.lib",
+        "module": mod_name,
+        "cls": cls_name,
+    }
+
+    # Write the registry entry to the registry file.
+    with open(REGISTRY_FILE, 'w') as f:
+        yaml.dump(entry, f, indent=4)
+
+    print(f"{debug_prefix} Registry file created at {REGISTRY_FILE} with entry: {entry}")
 
 
 def generate_api(found_protos, proto):
@@ -83,6 +109,7 @@ if proto_path is None:
     raise Exception(f"{msg}")
 
 generate_api(proto_files, f"{PROTO_FILE}.proto")
+create_registry(NAME.lower(), PROTO_MOD_NAME, CALLSET_NAME)
 
 setuptools.setup(
     name=NAME,
