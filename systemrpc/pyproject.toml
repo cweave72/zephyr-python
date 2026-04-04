@@ -13,7 +13,15 @@ dependencies = [
 [project.scripts]
 systemrpc-cli = "systemrpc.cli:entrypoint"
 
+[tool.proto_builder]
+name = "systemrpc"
+proto_file = "SystemRpc"
+proto_mod = "system"
+callset_name = "Callset"
 
 [build-system]
-requires = ["setuptools", "grpcio-tools", "betterproto[compiler]==2.0.0b6", "pyyaml"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools", "proto_builder", "betterproto[compiler]==2.0.0b6"]
+build-backend = "proto_builder.backend"
+
+[tool.uv.sources]
+proto_builder = { path = "../proto_builder" }

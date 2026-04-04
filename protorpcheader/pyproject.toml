@@ -1,3 +1,17 @@
+[project]
+name = "protorpcheader"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.proto_builder]
+name = "protorpcheader"
+proto_file = "ProtoRpcHeader"
+
 [build-system]
-requires = ["setuptools", "grpcio-tools", "betterproto[compiler]==2.0.0b6"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools", "proto_builder", "betterproto[compiler]==2.0.0b6"]
+build-backend = "proto_builder.backend"
+
+[tool.uv.sources]
+proto_builder = { path = "../proto_builder" }

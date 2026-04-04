@@ -1,0 +1,22 @@
+[project]
+name = "proto-builder"
+version = "0.1.0"
+description = "Shared backend for generating betterproto bindings."
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "setuptools>=61.0",
+    "betterproto[compiler]==2.0.0b6",
+    "grpcio-tools",
+    "pyyaml",
+]
+
+[build-system]
+# Standard setuptools to build the builder itself
+requires = ["setuptools>=61.0", "wheel", "betterproto[compiler]==2.0.0b6"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# Ensure backend.py is included in the package
+packages = ["proto_builder"]
