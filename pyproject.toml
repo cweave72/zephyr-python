@@ -13,6 +13,7 @@ dependencies = [
     "rtosutils",
     "trace-tool",
     "tracemodule",
+    "subscriber",
 ]
 
 [tool.uv.sources]
@@ -23,3 +24,4 @@ systemrpc = { path = "systemrpc", editable = true }
 rtosutils = { path = "rtosutils", editable = true }
 trace-tool = { path = "trace_tool", editable = true }
 tracemodule = { path = "tracemodule", editable = true }
+subscriber = { path = "subscriber", editable = true }
