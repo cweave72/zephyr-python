@@ -1,22 +1,21 @@
 from datetime import datetime
 
 from rich.text import Text
+from rich.highlighter import ReprHighlighter
 
 from subscriber.client import SubscriberClient
 
 LEVELS = {
-    0x30: ("CRITICAL", 50, "bold white on red"),
-    0x31: ("ERROR", 40, "bold red"),
-    0x32: ("WARN", 30, "yellow"),
-    0x33: ("INFO", 20, "cyan"),
-    0x34: ("DEBUG", 10, "dim"),
+    0: ("CRITICAL", 50, "bold white on red"),
+    1: ("ERROR", 40, "red"),
+    2: ("WARN", 30, "yellow"),
+    3: ("INFO", 20, "blue"),
+    4: ("DEBUG", 10, "dim"),
 }
 
 SEVERITY = {name: rank for name, rank, _ in LEVELS.values()}
 
 LEVEL_CHOICES = ("debug", "info", "warn", "error", "critical")
-
-BOLD_TEXT_LEVELS = {"CRITICAL", "ERROR", "WARN"}
 
 
 class MsgSubscriberClient(SubscriberClient):
@@ -47,11 +46,12 @@ class MsgSubscriberClient(SubscriberClient):
         with open(self.logfile, "a") as f:
             f.write(f"{timestamp.isoformat()} {pub_str} [{level_name:>8}] {text}\n")
 
+        highlighter = ReprHighlighter()
+
         if rank >= self.threshold:
             line = Text()
+            line.append(f"({pub_str}) ", style="magenta")
             line.append(f"{timestamp:%H:%M:%S} ", style="dim")
-            line.append(f"{pub_str} ", style="bold cyan")
-            line.append(f"[{level_name:>8}] ", style=style)
-            text_style = "bold" if level_name in BOLD_TEXT_LEVELS else None
-            line.append(text, style=text_style)
+            line.append(f"[{level_name}] ", style=style)
+            line.append(highlighter(text))
             self.console.print(line)

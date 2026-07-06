@@ -16,6 +16,17 @@ def parse_pubid(topic):
     return match.group(1) if match else None
 
 
+def resolve_topic(base_topic, all_, pub):
+    """Expands a base topic into the concrete wildcard/pubid-scoped topic
+    string per Publisher_createTopic's "<topic>/pubid-<id>" convention."""
+    if all_ and pub is not None:
+        raise ValueError("--all and --pub are mutually exclusive.")
+
+    if pub is not None:
+        return f"{base_topic}/pubid-{pub}"
+    return f"{base_topic}/+"
+
+
 class SubscriberClient:
     """Wraps a paho MQTT client subscribed to a single topic.
 
@@ -62,3 +73,15 @@ class SubscriberClient:
             self.client.loop_forever()
         except KeyboardInterrupt:
             self.client.disconnect()
+
+    def start(self):
+        """Non-blocking counterpart to run(): connects and starts paho's own
+        background network thread, returning immediately."""
+        self.client.connect(self.host, self.port)
+        self.client.loop_start()
+
+    def stop(self):
+        """Counterpart to start(): disconnects and joins the background
+        network thread."""
+        self.client.disconnect()
+        self.client.loop_stop()
