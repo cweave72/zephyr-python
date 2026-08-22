@@ -43,7 +43,8 @@ def sub(ctx, topic, all_, pub):
     """Subscribe to an arbitrary TOPIC and stream best-effort decoded messages
     until Ctrl-C. Every Publisher-module topic is actually published as
     "TOPIC/pubid-<id>"; --pub targets one publisher, --all (the default)
-    wildcards all of them.
+    wildcards all of them. Pass "#" as TOPIC to subscribe to every topic on
+    the broker.
     """
     try:
         resolved_topic = client.resolve_topic(topic, all_, pub)

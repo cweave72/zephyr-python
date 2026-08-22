@@ -38,7 +38,7 @@ class MsgSubscriberClient(SubscriberClient):
         text = payload[1:].decode("utf-8", errors="replace")
         return level_name, rank, style, text
 
-    def handle(self, decoded, pub_id):
+    def handle(self, decoded, pub_id, topic):
         level_name, rank, style, text = decoded
         timestamp = datetime.now()
         pub_str = f"pub:{pub_id}" if pub_id is not None else "pub:???"
