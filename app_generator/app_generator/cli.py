@@ -90,13 +90,15 @@ def tui(ctx):
 @click.option("--tracing/--no-tracing", default=False, help="Include CTF tracing.")
 @click.option("--nv/--no-nv", default=None, help="Include NVS settings.")
 @click.option("--shell/--no-shell", default=False, help="Enable the Zephyr shell.")
+@click.option("--led/--no-led", default=True,
+              help="Drive the onboard LED via the devicetree led0 alias.")
 @click.option("--dest", default=None, help="Destination (default applications/<name>).")
 @click.option("--dry-run", is_flag=True, help="Print the manifest; write nothing.")
 @click.option("--overwrite", is_flag=True, help="Overwrite an existing app.")
 @click.pass_context
 def new(ctx, name, desc, net_type, ip_mode, addr, mask, gw, board_list,
-        module_specs, echoserver_transport, rpc, tracing, nv, shell, dest,
-        dry_run, overwrite):
+        module_specs, echoserver_transport, rpc, tracing, nv, shell, led,
+        dest, dry_run, overwrite):
     """Generate a new application non-interactively."""
     console = Console()
     known = {b for b, _, _ in boards_mod.all_boards()}
@@ -114,7 +116,7 @@ def new(ctx, name, desc, net_type, ip_mode, addr, mask, gw, board_list,
     answers = gen.build_answers(
         app_name=name, description=desc, net_type=net_type, ip_mode=ip_mode,
         ipv4_addr=addr, ipv4_mask=mask, ipv4_gw=gw, use_rpc=rpc,
-        use_tracing=tracing, use_nv=nv, use_shell=shell,
+        use_tracing=tracing, use_nv=nv, use_shell=shell, use_led=led,
         modules=_parse_modules(module_specs),
         echoserver_transport=echoserver_transport, board_list=board_list)
 

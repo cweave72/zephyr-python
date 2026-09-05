@@ -52,6 +52,24 @@ ESP32_WIFI_AUTO_DHCP_BOARDS = {
 }
 
 
+# Boards whose own devicetree already provides a "led0" alias. For these the
+# app must NOT redefine it -- the board knows its own LED.
+BOARDS_WITH_LED0 = {
+    "esp32s3_qtpy",
+    "w55rp20_evb_pico",
+}
+
+# For boards with no led0 alias, the GPIO the onboard LED sits on. Taken from
+# applications/blinky, which is the reference for LED handling in this tree.
+# A board absent from both this map and BOARDS_WITH_LED0 gets a commented
+# template in its overlay instead of a guess -- a wrong pin silently drives
+# nothing, or drives something else.
+LED0_GPIO = {
+    "esp32_devkitc_wroom": ("gpio0", 2),
+    "esp32s3_matrix": ("gpio0", 1),
+}
+
+
 def workspace_base():
     """Locates the workspace root.
 

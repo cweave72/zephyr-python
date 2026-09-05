@@ -109,6 +109,7 @@ class TuiApp(App):
                 yield Checkbox("Tracing", id="use_tracing")
                 yield Checkbox("NV settings", value=True, id="use_nv")
                 yield Checkbox("Shell", id="use_shell")
+                yield Checkbox("Onboard LED", value=True, id="use_led")
 
                 yield Label("Boards", classes="heading")
                 yield SelectionList(
@@ -161,6 +162,7 @@ class TuiApp(App):
             use_tracing=self.query_one("#use_tracing", Checkbox).value,
             use_nv=self.query_one("#use_nv", Checkbox).value,
             use_shell=self.query_one("#use_shell", Checkbox).value,
+            use_led=self.query_one("#use_led", Checkbox).value,
             modules=self.selected_modules(),
             board_list=list(self.query_one("#boards", SelectionList).selected),
         )

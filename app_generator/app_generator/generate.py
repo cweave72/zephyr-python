@@ -76,7 +76,7 @@ def build_answers(*, app_name, description="A Zephyr application.",
                   net_type="wifi", ip_mode="dhcp",
                   ipv4_addr="192.168.1.15", ipv4_mask="255.255.255.0",
                   ipv4_gw="192.168.1.1", use_rpc=True, use_tracing=False,
-                  use_nv=None, use_shell=False, modules=None,
+                  use_nv=None, use_shell=False, use_led=True, modules=None,
                   echoserver_transport="udp", board_list=None, base=None):
     """Normalize CLI/TUI input into the answer set the template expects."""
     if net_type == "none":
@@ -105,6 +105,7 @@ def build_answers(*, app_name, description="A Zephyr application.",
         "use_tracing": use_tracing,
         "use_nv": use_nv,
         "use_shell": use_shell,
+        "use_led": use_led,
         "modules": modules,
         "echoserver_transport": echoserver_transport,
         "_module_symbols": resolve_modules(modules, echoserver_transport, base),
@@ -157,11 +158,68 @@ def board_files(answers, base=None):
             lines += ["CONFIG_WIFI_ESP32=y", "CONFIG_ESP32_WIFI_STA_RECONNECT=y", ""]
 
         out[f"boards/{stem}.conf"] = "\n".join(lines).rstrip() + "\n"
-        out[f"boards/{stem}.overlay"] = _overlay(board, stem, net_type)
+        out[f"boards/{stem}.overlay"] = _overlay(
+            board, stem, net_type, answers.get("use_led", False))
     return out
 
 
-def _overlay(board, stem, net_type):
+def _led_overlay(board):
+    """Devicetree fragment supplying the led0 alias, or "" when unnecessary.
+
+    Three cases:
+      - the board already defines led0 -> nothing, redefining it would fight
+        the board's own devicetree;
+      - we know the GPIO from applications/blinky -> emit a working node;
+      - we do not -> emit a commented template. A guessed pin would silently
+        drive nothing, or drive some other peripheral.
+    """
+    if board in boards_mod.BOARDS_WITH_LED0:
+        return ("/* This board defines the led0 alias in its own devicetree, so\n"
+                " * the application does not need to. */\n")
+
+    pin = boards_mod.LED0_GPIO.get(board)
+    if pin:
+        port, num = pin
+        return (
+            f"/* Onboard LED. Pin taken from applications/blinky. */\n"
+            f"/ {{\n"
+            f"\tleds {{\n"
+            f"\t\tcompatible = \"gpio-leds\";\n"
+            f"\t\tmyled0: led_0 {{\n"
+            f"\t\t\tgpios = <&{port} {num} GPIO_ACTIVE_HIGH>;\n"
+            f"\t\t\tlabel = \"Onboard LED 0\";\n"
+            f"\t\t}};\n"
+            f"\t}};\n"
+            f"\n"
+            f"\taliases {{\n"
+            f"\t\tled0 = &myled0;\n"
+            f"\t}};\n"
+            f"}};\n"
+        )
+
+    return (
+        "/* This board has no led0 alias and the generator does not know which\n"
+        " * GPIO its LED is on, so fill in the pin below to enable LED support.\n"
+        " * Until then app_led_init() logs a warning and the LED calls are\n"
+        " * no-ops -- the app still builds and runs.\n"
+        " *\n"
+        " * / {\n"
+        " *     leds {\n"
+        " *         compatible = \"gpio-leds\";\n"
+        " *         myled0: led_0 {\n"
+        " *             gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;\n"
+        " *             label = \"Onboard LED 0\";\n"
+        " *         };\n"
+        " *     };\n"
+        " *     aliases {\n"
+        " *         led0 = &myled0;\n"
+        " *     };\n"
+        " * };\n"
+        " */\n"
+    )
+
+
+def _overlay(board, stem, net_type, use_led=False):
     """Devicetree overlay for one board.
 
     Always emitted, even when it has no nodes: common.mk computes
@@ -174,6 +232,8 @@ def _overlay(board, stem, net_type):
         f" */\n\n"
     )
 
+    led = _led_overlay(board) if use_led else ""
+
     if net_type == "wifi" and board in boards_mod.ESP32_WIFI_AUTO_DHCP_BOARDS:
         # Not optional. CONFIG_WIFI_ESP32 is
         #   depends on DT_HAS_ESPRESSIF_ESP32_WIFI_ENABLED
@@ -181,7 +241,7 @@ def _overlay(board, stem, net_type):
         # because it is also `default y`, enabling the node is all that is
         # needed. Leaving it out builds cleanly, with no warning, and produces
         # an image with no wifi driver.
-        return head + (
+        return head + led + ("\n" if led else "") + (
             "/* Required: the esp32 wifi driver depends on this node being\n"
             " * enabled (CONFIG_WIFI_ESP32 depends on\n"
             " * DT_HAS_ESPRESSIF_ESP32_WIFI_ENABLED). Without it the driver is\n"
@@ -196,7 +256,7 @@ def _overlay(board, stem, net_type):
         # can be inferred -- so leave it explicit rather than guess and produce
         # a build that fails deep in the devicetree
         # (__device_dts_ord_DT_CHOSEN_zephyr_uart_pipe_ORD undeclared).
-        return head + (
+        return head + led + ("\n" if led else "") + (
             "/* REQUIRED for serial networking: nominate the UART that carries\n"
             " * the SLIP link. Which UART depends on your wiring, so it cannot\n"
             " * be generated. Without it the build fails with\n"
@@ -213,6 +273,9 @@ def _overlay(board, stem, net_type):
             " * };\n"
             " */\n"
         )
+
+    if led:
+        return head + led
 
     return head + (
         "/* Typically: pin/alias definitions the app needs (led0, a sensor\n"
@@ -257,6 +320,8 @@ def plan_files(answers, base=None):
         files += ["conf/rpc.conf", "src/rpc.c"]
     if answers["use_tracing"]:
         files += ["conf/tracing.conf", "conf/tracemodule.conf", "src/trace.c"]
+    if answers.get("use_led"):
+        files += ["conf/led.conf", "src/led.c", "src/led.h"]
     for mod in answers["modules"]:
         if mod != "TraceModule":       # config-only, no _init(), no source
             files.append(f"src/{mod}.c")
