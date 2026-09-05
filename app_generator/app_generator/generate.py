@@ -22,7 +22,13 @@ from app_generator import modules as modules_mod
 
 logger = logging.getLogger(__name__)
 
-TEMPLATE_SUBPATH = Path("common") / "templates" / "app"
+# The Copier source is the zephyr-common repo ROOT, not the template directory
+# inside it. Copier only treats a source as version-controlled when the path it
+# is handed is a git repo root (copier._vcs.is_git_repo_root), and it records
+# the template commit in .copier-answers.yml only for such sources -- which is
+# what `copier update` needs to diff against. copier.yml therefore sits at the
+# repo root with `_subdirectory: templates/app/template`.
+TEMPLATE_SUBPATH = Path("common")
 
 
 def template_path(base=None):
