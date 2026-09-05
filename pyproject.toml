@@ -14,6 +14,7 @@ dependencies = [
     "trace-tool",
     "tracemodule",
     "subscriber",
+    "app-generator",
 ]
 
 [tool.uv.sources]
@@ -25,3 +26,4 @@ rtosutils = { path = "rtosutils", editable = true }
 trace-tool = { path = "trace_tool", editable = true }
 tracemodule = { path = "tracemodule", editable = true }
 subscriber = { path = "subscriber", editable = true }
+app-generator = { path = "app_generator", editable = true }

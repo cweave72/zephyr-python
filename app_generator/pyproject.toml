@@ -1,0 +1,15 @@
+[project]
+name = "app-generator"
+version = "0.1.0"
+description = "Zephyr application template generator."
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1.3",
+    "rich>=13.9.4",
+    "textual",
+    "copier>=9.0",
+    "PyYAML",
+]
+
+[project.scripts]
+app_gen = "app_generator.cli:entrypoint"
