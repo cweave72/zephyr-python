@@ -114,9 +114,59 @@ def build_answers(*, app_name, description="A Zephyr application.",
         "use_led": use_led,
         "modules": modules,
         "echoserver_transport": echoserver_transport,
-        "_module_symbols": resolve_modules(modules, echoserver_transport, base),
-        "_board_list": sorted(board_list or []),
+        "module_symbols": resolve_modules(modules, echoserver_transport, base),
+        "board_list": sorted(board_list or []),
     }
+
+
+def modules_conf(answers, base=None):
+    """-> the text of conf/modules.conf.
+
+    Written here rather than by the template for two reasons: the template
+    cannot parse Kconfig, and Copier does not persist computed answers (it
+    omits both "_"-prefixed and `when: false` values from
+    .copier-answers.yml), so a template that depended on one could not be
+    re-rendered by `copier update`. Generating it here also means an update
+    always reflects the CURRENT common/modules Kconfig.
+    """
+    syms = answers["module_symbols"]
+    out = [
+        "# Enabled modules, with their Kconfig dependency closure resolved by",
+        "# app_gen.",
+        "#",
+        "# The closure is written out in full because Kconfig 'depends on' does",
+        "# not auto-enable: a symbol whose dependency is unmet is silently",
+        "# dropped, and the module's headers then vanish from the include path.",
+        "",
+    ]
+    for sym in syms["local"]:
+        out.append(f"CONFIG_{sym}=y")
+    if syms["zephyr"]:
+        out += ["", "# Pulled in by the closure (Zephyr subsystems)."]
+        out += [f"CONFIG_{sym}=y" for sym in syms["zephyr"]]
+    if syms["levels"]:
+        out += ["", "# Per-module log levels."]
+        out += [f"CONFIG_{sym}_LOG_LEVEL_{lvl.upper()}=y"
+                for sym, lvl in syms["levels"].items()]
+    return "\n".join(out).rstrip() + "\n"
+
+
+def _boards_on_disk(dest, base=None):
+    """-> board names an existing app supports, from its boards/*.conf files.
+
+    The board list is not stored in .copier-answers.yml (it is a private "_"
+    answer), so on update it is recovered from disk. Files are named with
+    Zephyr's short build string, so map back through conf_basename().
+    """
+    out = set()
+    bdir = Path(dest) / "boards"
+    if not bdir.is_dir():
+        return out
+    stems = {p.stem for p in bdir.glob("*.conf")}
+    for name, target, _hint in boards_mod.all_boards(base):
+        if boards_mod.conf_basename(target) in stems:
+            out.add(name)
+    return out
 
 
 def board_files(answers, base=None):
@@ -131,7 +181,7 @@ def board_files(answers, base=None):
     static_ip = answers["net_type"] != "none" and answers["ip_mode"] == "static"
 
     targets = {name: target for name, target, _ in boards_mod.all_boards(base)}
-    for board in answers["_board_list"]:
+    for board in answers["board_list"]:
         # File name must be what Zephyr looks for, or it is silently ignored.
         stem = boards_mod.conf_basename(targets.get(board, board))
         lines = []
@@ -353,7 +403,9 @@ def run(answers, dest, base=None, pretend=False, overwrite=False):
         overwrite=overwrite,
         quiet=True,
     )
-    for rel, content in board_files(answers, base).items():
+    generated = dict(board_files(answers, base))
+    generated["conf/modules.conf"] = modules_conf(answers, base)
+    for rel, content in generated.items():
         p = dest / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content)
@@ -377,11 +429,25 @@ def update(dest, base=None):
 
     Generation works fine without either; update is the opt-in extra.
     """
+    import yaml
     from copier import run_update
     from copier.errors import UserMessageError
 
+    # Copier does not persist answers whose names start with "_" -- it treats
+    # them as private -- so the computed _module_symbols is absent from
+    # .copier-answers.yml and conf/modules.conf would fail to render on update.
+    # Recompute it from the stored user answers. Recomputing rather than
+    # persisting is deliberate: the dependency closure should reflect the
+    # CURRENT common/modules Kconfig, so an update after a Kconfig fix picks up
+    # newly declared dependencies.
+    answers_path = Path(dest) / ".copier-answers.yml"
+
     try:
-        run_update(str(dest), overwrite=True, unsafe=True, quiet=True)
+        # defaults=True: an update may introduce questions the app predates
+        # (use_led did exactly that). Without it Copier tries to prompt and
+        # fails outright in a non-interactive session.
+        run_update(str(dest), defaults=True, overwrite=True,
+                   unsafe=True, quiet=True)
     except UserMessageError as e:
         msg = str(e)
         if "old template references" in msg:
@@ -402,3 +468,31 @@ def update(dest, base=None):
                 "the destination repo must be clean. Commit or stash the "
                 "changes in 'applications' and retry.") from e
         raise UpdateNotPossible(msg) from e
+
+    # Board files live outside the template (their set is discovered), so
+    # run_update does not touch them. Rewrite them from the stored answers so an
+    # updated app picks up board-file improvements too.
+    if answers_path.exists():
+        stored = yaml.safe_load(answers_path.read_text()) or {}
+        answers = build_answers(
+            app_name=stored.get("app_name", Path(dest).name),
+            description=stored.get("description", ""),
+            net_type=stored.get("net_type", "none"),
+            ip_mode=stored.get("ip_mode", "dhcp"),
+            ipv4_addr=stored.get("ipv4_addr", "192.168.1.15"),
+            ipv4_mask=stored.get("ipv4_mask", "255.255.255.0"),
+            ipv4_gw=stored.get("ipv4_gw", "192.168.1.1"),
+            use_rpc=stored.get("use_rpc", False),
+            use_tracing=stored.get("use_tracing", False),
+            use_nv=stored.get("use_nv", False),
+            use_shell=stored.get("use_shell", False),
+            use_led=stored.get("use_led", False),
+            modules=stored.get("modules") or {},
+            echoserver_transport=stored.get("echoserver_transport", "udp"),
+            board_list=sorted(_boards_on_disk(dest)), base=base)
+        refreshed = dict(board_files(answers, base))
+        refreshed["conf/modules.conf"] = modules_conf(answers, base)
+        for rel, content in refreshed.items():
+            pth = Path(dest) / rel
+            pth.parent.mkdir(parents=True, exist_ok=True)
+            pth.write_text(content)
