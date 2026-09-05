@@ -251,14 +251,14 @@ class TuiApp(App):
         body += [f"  {f}" for f in files]
         self.query_one("#manifest", Static).update("\n".join(body))
 
-        added = answers["_module_symbols"]["added"]
+        added = answers["module_symbols"]["added"]
         self.query_one("#closure", Static).update(
             "\n".join(f"  {s}" for s in added) if added else "-")
 
         warns = list(self.form_errors())
         net = answers["net_type"]
         if net != "none":
-            for b in answers["_board_list"]:
+            for b in answers["board_list"]:
                 hint = boards_mod.net_hint(b)
                 if hint and hint != net:
                     warns.append(f"{b} normally uses '{hint}', app is '{net}'.")

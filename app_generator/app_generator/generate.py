@@ -434,7 +434,7 @@ def update(dest, base=None):
     from copier.errors import UserMessageError
 
     # Copier does not persist answers whose names start with "_" -- it treats
-    # them as private -- so the computed _module_symbols is absent from
+    # them as private -- so the computed module_symbols is absent from
     # .copier-answers.yml and conf/modules.conf would fail to render on update.
     # Recompute it from the stored user answers. Recomputing rather than
     # persisting is deliberate: the dependency closure should reflect the

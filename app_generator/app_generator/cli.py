@@ -127,7 +127,7 @@ def new(ctx, name, desc, net_type, ip_mode, addr, mask, gw, board_list,
         console.print(f"[bold]Would write {len(files)} files to[/bold] {dest}")
         for f in files:
             console.print(f"  {f}")
-        added = answers["_module_symbols"]["added"]
+        added = answers["module_symbols"]["added"]
         if added:
             console.print(f"\n[bold]Pulled in by dependency closure:[/bold] "
                           f"{', '.join(added)}")
