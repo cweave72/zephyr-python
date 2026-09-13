@@ -1,0 +1,15 @@
+[project]
+name = "protorpc"
+version = "0.1.0"
+description = "Protobuf rpc library"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "cdw" }]
+dependencies = [
+    "click",
+    "rich",
+]
+
+[project.scripts]
+run_protorpc_gen = "protorpc.generator.generator:entrypoint"
+protoc-gen-protorpc = "protorpc.generator.generator:generator_main"

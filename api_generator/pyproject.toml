@@ -1,0 +1,15 @@
+[project]
+name = "api-generator"
+version = "0.1.0"
+description = "Protobuf api generator"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "cdw" }]
+dependencies = [
+    "click",
+    "rich",
+    "PyYAML",
+]
+
+[project.scripts]
+api_gen = "api_generator.main:main"
