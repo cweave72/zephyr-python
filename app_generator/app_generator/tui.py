@@ -43,9 +43,25 @@ class ModuleRow(Horizontal):
     """
 
     DEFAULT_CSS = """
-    ModuleRow { height: 3; }
-    ModuleRow > Checkbox { width: 1fr; }
-    ModuleRow > Select { width: 14; }
+    ModuleRow {
+        height: 3;
+        layout: horizontal;
+        align: left middle;
+        width: 100%;
+    }
+
+    ModuleRow > Checkbox {
+        width: 1fr;
+        min-width: 25;
+        margin: 0;
+        padding: 0;
+    }
+
+    ModuleRow > Select {
+        width: 14;
+        margin: 0;
+        padding: 0;
+    }
     """
 
     def __init__(self, name):
@@ -69,13 +85,46 @@ class TuiApp(App):
     TITLE = "Zephyr App Generator"
 
     CSS = """
-    #cols { height: 1fr; }
-    #sys, #mods, #man { width: 1fr; border: round $accent; padding: 0 1; }
-    #man { width: 1.4fr; }
-    .heading { text-style: bold; color: $accent; }
-    .warn { color: $warning; }
-    #generate { width: 100%; margin: 1 0; }
-    Input.-invalid { border: tall $error; }
+    #cols {
+        height: 1fr;
+    }
+
+    #sys, #mods, #man {
+        width: 1fr;
+        border: round $accent;
+        padding: 0 1;
+    }
+
+    #man {
+        width: 1.4fr;
+    }
+
+    .heading {
+        text-style: bold;
+        color: $accent;
+    }
+    
+    .checklabel {
+        width: 1fr;
+    }
+    .checklabel > Checkbox {
+        width: 100%;
+        padding-left: 0;
+        margin: 0;
+    }
+
+    .warn {
+        color: $warning;
+    }
+    
+    #generate {
+        width: 100%;
+        margin: 1 0;
+    }
+
+    Input.-invalid {
+         border: tall $error;
+    }
     """
 
     BINDINGS = [
@@ -85,6 +134,7 @@ class TuiApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
+
         with Horizontal(id="cols"):
             with VerticalScroll(id="sys"):
                 yield Label("System", classes="heading")
@@ -105,11 +155,13 @@ class TuiApp(App):
                 yield Input(value="255.255.255.0", id="ipv4_mask", disabled=True)
                 yield Input(value="192.168.1.1", id="ipv4_gw", disabled=True)
 
-                yield Checkbox("RPC server", value=True, id="use_rpc")
-                yield Checkbox("Tracing", id="use_tracing")
-                yield Checkbox("NV settings", value=True, id="use_nv")
-                yield Checkbox("Shell", id="use_shell")
-                yield Checkbox("Onboard LED", value=True, id="use_led")
+                with VerticalScroll(id='feats', classes="checklabel"):
+                    yield Label("Select Features", id="features")
+                    yield Checkbox("RPC server", id="use_rpc")
+                    yield Checkbox("Tracing", id="use_tracing")
+                    yield Checkbox("NV settings", id="use_nv")
+                    yield Checkbox("Shell", id="use_shell")
+                    yield Checkbox("Onboard LED", id="use_led")
 
                 yield Label("Boards", classes="heading")
                 yield SelectionList(
@@ -135,6 +187,7 @@ class TuiApp(App):
 
     def on_mount(self):
         self.refresh_manifest()
+        self.theme = "monokai"
 
     # ---- answer assembly -------------------------------------------------
 
