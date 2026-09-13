@@ -86,7 +86,10 @@ def workspace_base():
             return parent
     raise RuntimeError(
         "Cannot locate the workspace root. Set WORKSPACE_BASE, or run from "
-        "inside the west workspace.")
+        "inside the west workspace. app_gen needs the full workspace: it "
+        "reads the module and board data from the 'common' repository and "
+        "writes the new application to the 'applications' repository. A "
+        "standalone zephyr-python checkout cannot supply these.")
 
 
 def discover_out_of_tree(base=None):

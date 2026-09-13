@@ -1,10 +1,15 @@
 import os
-import tomllib
+import shutil
 import yaml
 import sys
 from importlib import resources
 from pathlib import Path
 from setuptools import build_meta as _orig
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
 
 from grpc_tools.protoc import main as protoc
 
@@ -64,8 +69,14 @@ def generate_api(
     grpc_tools_inc = (resources.files("grpc_tools") / "_proto").resolve()
     includes.append(f"-I{grpc_tools_inc}")
 
-    # Create dest if it doesn't exist.
-    dest.mkdir(exist_ok=True)
+    # This step controls all files in dest. Delete dest, then create it again.
+    # If you do not delete dest, modules for deleted protos stay in dest.
+    # Python can import these old modules.
+    # mkdir does not create parent directories. An incorrect 'name' value
+    # causes an error.
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir()
 
     cmd_args = []
     cmd_args.append("protoc")
@@ -98,11 +109,26 @@ def run_builder():
     fp = open(f"{name}.log", 'w')
     sys.stdout = fp
 
+    # A workspace checkout sets PROTO_BASE. A standalone checkout does not.
+    # In a standalone checkout, use the proto submodule. The build starts in
+    # the package directory. Thus the parent directory is the repository root.
     proto_base = os.environ.get("PROTO_BASE", None)
     if proto_base is None:
-        print(f"{debug_prefix} Error: PROTO_BASE env variable not set.")
-        raise Exception(f"{debug_prefix} PROTO_BASE env variable not set.")
-    
+        # An uninitialized submodule is an empty directory. Thus look for a
+        # proto file, not for the directory.
+        submodule = Path.cwd().parent / "proto"
+        if any(submodule.glob("**/*.proto")):
+            proto_base = str(submodule)
+            print(f"{debug_prefix} PROTO_BASE not set. Using the proto "
+                  f"submodule: {proto_base}")
+
+    if proto_base is None:
+        msg = (f"{debug_prefix} Cannot find the proto files. Set the "
+               "PROTO_BASE environment variable, or initialize the proto "
+               "submodule with 'git submodule update --init'.")
+        print(msg)
+        raise Exception(msg)
+
     # 3. Your Centralized Boilerplate
     proto_files = find_protos(proto_base)
 

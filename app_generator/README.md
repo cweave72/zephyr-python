@@ -4,6 +4,11 @@ Generates a new Zephyr application from `common/templates/app`, wiring up
 networking, RPC, tracing and `common/modules` so a new app builds on the first
 try.
 
+> **app_gen needs the full workspace.** It reads the module and board data
+> from the `common` repository. It writes the new application to the
+> `applications` repository. Thus app_gen does not operate in a standalone
+> `zephyr-python` checkout. The other tools in this repository do.
+
 ```bash
 app_gen                       # TUI (default)
 app_gen new --name my_app --net wifi --board esp32s3_matrix --rpc
