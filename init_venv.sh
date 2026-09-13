@@ -15,7 +15,8 @@ if [ -z "${PROTO_BASE:-}" ]; then
         echo "Set PROTO_BASE=$PROTO_BASE"
     else
         echo "Warning: PROTO_BASE is not set and the proto submodule is empty."
-        echo "Run 'git submodule update --init' or source workspace-env.sh."
+        echo "Run 'git submodule update --init', or set up the workspace"
+        echo "environment. Refer to the workspace README."
     fi
 fi
 

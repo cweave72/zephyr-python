@@ -16,10 +16,10 @@ Each package directory contains its own README.
 
 You can use this repository in a workspace, or alone.
 
-| Mode       | Proto files                                                                    | `app_gen`      |
-|------------|--------------------------------------------------------------------------------|----------------|
-| Workspace  | The `proto` repository of the workspace. `workspace-env.sh` sets `PROTO_BASE`. | Available.     |
-| Standalone | The `proto` submodule in this repository.                                      | Not available. |
+| Mode       | Proto files                                       | `app_gen`      |
+|------------|---------------------------------------------------|----------------|
+| Workspace  | The workspace supplies them through `PROTO_BASE`. | Available.     |
+| Standalone | The `proto` submodule in this repository.         | Not available. |
 
 The tools read the `.proto` files of the `proto` repository. In a standalone
 checkout, a git submodule supplies these files. The build uses the submodule
@@ -50,12 +50,9 @@ through `PROTO_BASE`.
 
 ## Workspace installation
 
-Source the workspace environment first. This sets the `PROTO_BASE` variable
-to the `proto` repository of the workspace:
-
-```sh
-source workspace-env.sh
-```
+Set up the workspace environment first. Refer to the workspace README for
+that procedure. The workspace must set the `PROTO_BASE` environment variable
+to its proto directory.
 
 Then create and activate the venv:
 
@@ -99,5 +96,7 @@ registry gives the Python class for each callset ID that a device reports.
 ## Requirements
 
 - Python 3.10 or a subsequent version. The venv uses Python 3.11.
-- The `PROTO_BASE` environment variable. `workspace-env.sh` sets it.
+- The proto files. In a workspace, the `PROTO_BASE` environment variable
+  gives their location. In a standalone checkout, the `proto` submodule
+  supplies them.
 - `uv`. Refer to the workspace README for the installation procedure.

@@ -22,8 +22,8 @@ if [[ -z "${PROTO_BASE:-}" ]]; then
         export PROTO_BASE="$(pwd)/proto"
     else
         echo "Error: PROTO_BASE is not set and the proto submodule is empty."
-        echo "In a workspace, source the workspace environment:"
-        echo "    source ../workspace-env.sh"
+        echo "In a workspace, set up the workspace environment. Refer to the"
+        echo "workspace README."
         echo "In a standalone checkout, initialize the submodule:"
         echo "    git submodule update --init"
         exit 1

@@ -68,12 +68,8 @@ interpreter in the tools venv.
 
 proto_builder finds the proto files in one of two locations.
 
-1. The `PROTO_BASE` environment variable. `workspace-env.sh` sets this
-   variable in a workspace:
-
-   ```sh
-   export PROTO_BASE=$WORKSPACE_BASE/proto
-   ```
+1. The `PROTO_BASE` environment variable. A workspace sets this variable to
+   its proto directory. Refer to the workspace README for that procedure.
 
 2. The `proto` submodule of the `zephyr-python` repository. proto_builder uses
    the submodule only if `PROTO_BASE` is not set. This permits a standalone
