@@ -76,7 +76,7 @@ Selecting `FsApi` adds a littlefs file system (`common/modules/FsApi`):
 - `src/FsApi.c`: `app_FsApi_init()` mounts the file system. `main.c` calls it
   before the network, so no remote call reaches an unmounted file system.
 - `src/rpc.c`: registers the `FsApiRpc` callset as id 2 (RPC apps only).
-- `boards/<board>.overlay`: the fs partition and the `fsapi_lfs` fstab node.
+- `boards/<board>.overlay`: the fs partition and the `/flash` fstab node.
 
 `--fs-size` (TUI: "FsApi size (KiB)") sets the partition size in KiB. The
 default is 128. The size is stored in `.copier-answers.yml` as `fs_size_kb`, so

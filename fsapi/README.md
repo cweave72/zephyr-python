@@ -1,7 +1,8 @@
 # fsapi
 
 fsapi is the host client for the **FsApiRpc** callset. It gives remote access
-to the littlefs file system of a Zephyr device. The package has two parts:
+to the littlefs file systems of a Zephyr device, for example `/flash` and
+`/ram`. The package has two parts:
 
 1. **`fsapi-cli`**. A command line tool: list, copy, move, remove and format.
 2. **`FsApi` class**. A Python API for scripts and tests.
@@ -28,26 +29,27 @@ A plain `uv sync` does not generate the bindings again. After a change to
 ## fsapi-cli
 
 All paths on the device are absolute and include the mount point, for example
-`/lfs/logs/a.txt`.
+`/flash/logs/a.txt`. `fsapi-cli mounts` lists the mount points.
 
 ```sh
 fsapi-cli --ip <device-ip> <command> [ARGS]
 ```
 
-| Command          | Description                                                    |
-|------------------|----------------------------------------------------------------|
-| `df`             | Shows the size, used space and free space of the file system.  |
-| `ls PATH`        | Lists a directory: type, size and name.                        |
-| `tree PATH`      | Shows a directory and all its subdirectories as a tree.        |
-| `stat PATH`      | Shows the type and size of a path.                             |
-| `cat PATH`       | Writes a device file to stdout.                                |
-| `get PATH DEST`  | Copies the device file PATH to the local file DEST.            |
-| `put SRC PATH`   | Copies the local file SRC to the device file PATH.             |
-| `rm PATH`        | Removes a file or an empty directory.                          |
-| `mv SRC DST`     | Renames or moves a file or directory.                          |
-| `mkdir PATH`     | Creates a directory.                                           |
-| `closeall`       | Closes all file and directory handles on the device.           |
-| `format [--yes]` | Erases the file system. Asks for confirmation without `--yes`. |
+| Command                | Description                                                                          |
+|------------------------|--------------------------------------------------------------------------------------|
+| `mounts`               | Lists the mount points.                                                              |
+| `df [PATH]`            | Shows the size, used and free space of each mount, or of the mount which holds PATH. |
+| `ls PATH`              | Lists a directory: type, size and name.                                              |
+| `tree PATH`            | Shows a directory and all its subdirectories as a tree.                              |
+| `stat PATH`            | Shows the type and size of a path.                                                   |
+| `cat PATH`             | Writes a device file to stdout.                                                      |
+| `get PATH DEST`        | Copies the device file PATH to the local file DEST.                                  |
+| `put SRC PATH`         | Copies the local file SRC to the device file PATH.                                   |
+| `rm PATH`              | Removes a file or an empty directory.                                                |
+| `mv SRC DST`           | Renames or moves a file or directory on one mount.                                   |
+| `mkdir PATH`           | Creates a directory.                                                                 |
+| `closeall`             | Closes all file and directory handles on the device.                                 |
+| `format MOUNT [--yes]` | Erases the mount MOUNT, for example `/ram`. Asks for confirmation without `--yes`.   |
 
 The common ProtoRpc options apply, for example `--ip`, `--port` (default
 13001) and `--refresh-bindings`. Run `fsapi-cli --help` for the full list.
@@ -55,33 +57,41 @@ The common ProtoRpc options apply, for example `--ip`, `--port` (default
 A file system error prints the device errno name and exits with status 1:
 
 ```
-$ fsapi-cli --ip 192.168.1.15 rm /lfs/p
-error: remove /lfs/p: ENOTEMPTY (-90)
+$ fsapi-cli --ip 192.168.1.15 rm /flash/p
+error: remove /flash/p: ENOTEMPTY (-90)
 ```
 
 ### Examples
 
 ```
+$ fsapi-cli --ip 192.168.1.15 mounts
+/flash
+/ram
+
 $ fsapi-cli --ip 192.168.1.15 df
-/lfs: 32 blocks of 4096 B; size 131072 B; used 28672 B; free 102400 B
+/flash: 32 blocks of 4096 B; size 131072 B; used 65536 B; free 65536 B
+/ram: 64 blocks of 512 B; size 32768 B; used 1024 B; free 31744 B
 
-$ fsapi-cli --ip 192.168.1.15 put random1k.dat /lfs/t/r1k.dat
-random1k.dat -> /lfs/t/r1k.dat: 1024 B
+$ fsapi-cli --ip 192.168.1.15 put random1k.dat /ram/r1k.dat
+random1k.dat -> /ram/r1k.dat: 1024 B
 
-$ fsapi-cli --ip 192.168.1.15 ls /lfs/t
+$ fsapi-cli --ip 192.168.1.15 ls /flash/t
 Type  Size  Name
 file   128  r128.dat
 file  1024  r1k.dat
 
-$ fsapi-cli --ip 192.168.1.15 tree /lfs
-/lfs
-├── bootcount (4 B)
-└── t/
-    ├── r128.dat (128 B)
-    └── r1k.dat (1024 B)
+$ fsapi-cli --ip 192.168.1.15 tree /ram
+/ram
+└── r1k.dat (1024 B)
 
-1 directories, 3 files
+0 directories, 1 files
+
+$ fsapi-cli --ip 192.168.1.15 format /nope
+error: /nope is not a mount point. Mounts: /flash, /ram
 ```
+
+A rename between two mounts fails with `EINVAL`. Copy the file with `get` and
+`put`, then remove it.
 
 In a new shell, the first command asks the device for its callsets. It prints
 the callset table before its own output. Thus do not pipe the first `cat`
@@ -101,15 +111,16 @@ callsets = get_callsets(get_callset_bindings(ip))
 api, conn = build_api(ProtoRpcHeader, callsets, port=13001, addr=ip)
 fs = FsApi(api)
 
-fs.put_file("/lfs/data.bin", b"\x00" * 5000)
-data = fs.get_file("/lfs/data.bin")
+print(fs.mounts())                 # ['/flash', '/ram']
+fs.put_file("/ram/data.bin", b"\x00" * 5000)
+data = fs.get_file("/ram/data.bin")
 
-fd = fs.open("/lfs/data.bin", OpenFlags.OPEN_READ)
+fd = fs.open("/ram/data.bin", OpenFlags.OPEN_READ)
 chunk = fs.read(fd, 100, offset=4000)
 fs.close(fd)
 
 try:
-    fs.rm("/lfs/missing")
+    fs.rm("/flash/missing")
 except FsApiException as e:
     assert e.result == -DeviceErrno.ENOENT
 
@@ -118,7 +129,8 @@ conn.close()
 
 | Method                                    | Description                                          |
 |-------------------------------------------|------------------------------------------------------|
-| `info()`                                  | The GetFsInfo reply: mount point and block counts.   |
+| `mounts()`                                | The list of mount points.                            |
+| `info(path)`                              | The GetFsInfo reply of the mount which holds path.   |
 | `stat(path)`, `exists(path)`              | Type and size of a path. `exists` returns a bool.    |
 | `ls(path)`                                | All entries of a directory. Reads all pages.         |
 | `ls_table(path)`, `tree(path)`            | A rich table, and a rich tree with counts.           |
@@ -129,7 +141,7 @@ conn.close()
 | `seek(fd, offset, whence)`, `size(fd)`    | File position and file size.                         |
 | `get_file(path)`, `put_file(path, data)`  | Transfers a full file in 1024-byte chunks.           |
 | `rm(path)`, `mv(src, dst)`, `mkdir(path)` | Path operations.                                     |
-| `format()`                                | Erases the file system. All data is lost.            |
+| `format(mount_point)`                     | Erases one mount. All its data is lost.              |
 
 Rules:
 
@@ -146,6 +158,6 @@ Rules:
 
 ## Version
 
-The `FsApi.version` attribute (0.2.0) must match the device callset version.
+The `FsApi.version` attribute (0.3.0) must match the device callset version.
 The CLI checks the version at startup. It stops if the major versions differ,
 or if the device minor version is newer.

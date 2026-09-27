@@ -69,16 +69,29 @@ def run(func, *args):
 
 
 @cli.command
+@click.argument('path', required=False)
 @click.pass_context
-def df(ctx):
-    """Prints the file system usage.
+def df(ctx, path):
+    """Prints the usage of each file system, or of the one which holds PATH.
     """
-    info = run(ctx.obj['fsapi'].info)
-    total = info.block_size * info.total_blocks
-    free = info.block_size * info.free_blocks
-    click.echo(f"{info.mount_point}: {info.total_blocks} blocks of "
-               f"{info.block_size} B; size {total} B; used {total - free} B; "
-               f"free {free} B")
+    fs = ctx.obj['fsapi']
+    paths = [path] if path else run(fs.mounts)
+    for p in paths:
+        info = run(fs.info, p)
+        total = info.block_size * info.total_blocks
+        free = info.block_size * info.free_blocks
+        click.echo(f"{info.mount_point}: {info.total_blocks} blocks of "
+                   f"{info.block_size} B; size {total} B; "
+                   f"used {total - free} B; free {free} B")
+
+
+@cli.command
+@click.pass_context
+def mounts(ctx):
+    """Lists the mount points.
+    """
+    for m in run(ctx.obj['fsapi'].mounts):
+        click.echo(m)
 
 
 @cli.command
@@ -189,17 +202,23 @@ def closeall(ctx):
 
 
 @cli.command
+@click.argument('mount_point')
 @click.option('-y', '--yes', is_flag=True, help="Do not ask for confirmation.")
 @click.pass_context
-def format(ctx, yes):
-    """Formats the device file system. All data is lost.
+def format(ctx, mount_point, yes):
+    """Formats the file system at MOUNT_POINT. All its data is lost.
     """
     fs = ctx.obj['fsapi']
+    known = run(fs.mounts)
+    if mount_point not in known:
+        Console(stderr=True).print(
+            f"[red]error:[/red] {mount_point} is not a mount point. "
+            f"Mounts: {', '.join(known)}")
+        sys.exit(1)
     if not yes:
-        mount_point = run(fs.info).mount_point
         click.confirm(f"Erase all data on {mount_point}?", abort=True)
-    run(fs.format)
-    click.echo("Formatted.")
+    run(fs.format, mount_point)
+    click.echo(f"Formatted {mount_point}.")
 
 
 def entrypoint():

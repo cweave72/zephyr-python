@@ -228,13 +228,13 @@ def board_files(answers, base=None):
 # in the template's conf/fs.conf, or the second open file fails with -ENOMEM
 # (FsApi checks this at build time).
 _FSTAB_NODE = (
-    "/* The file system which FsApi mounts. FsApi finds it by the nodelabel. */\n"
+    "/* The flash file system. FsApi_init mounts every zephyr,fstab,littlefs node. */\n"
     "/ {{\n"
     "\tfstab {{\n"
     "\t\tcompatible = \"zephyr,fstab\";\n"
-    "\t\tfsapi_lfs: fsapi_lfs {{\n"
+    "\t\tflash_lfs: flash_lfs {{\n"
     "\t\t\tcompatible = \"zephyr,fstab,littlefs\";\n"
-    "\t\t\tmount-point = \"/lfs\";\n"
+    "\t\t\tmount-point = \"/flash\";\n"
     "\t\t\tpartition = <&{part}>;\n"
     "\t\t\tread-size = <16>;\n"
     "\t\t\tprog-size = <16>;\n"
@@ -248,7 +248,8 @@ _FSTAB_NODE = (
 
 
 def _fs_overlay(board, fs_size_kb):
-    """Devicetree fragment for the FsApi littlefs partition and fstab node.
+    """Devicetree fragment for the FsApi littlefs partition and the /flash
+    fstab node.
 
     For a board in boards.FS_LAYOUTS: the partition goes at the top of flash,
     and the code partition ends where it starts. APP_LFS_SIZE keeps the size
@@ -262,8 +263,8 @@ def _fs_overlay(board, fs_size_kb):
     if lay is None:
         return (
             "/* FsApi: the generator does not know the flash layout of this\n"
-            " * board, so fill in a littlefs partition and the fsapi_lfs fstab\n"
-            " * node below. The partition must not overlap the code partition\n"
+            " * board, so fill in a littlefs partition and the fstab node\n"
+            " * below. The partition must not overlap the code partition\n"
             " * or the settings partition. Until then FsApi stops the build.\n"
             " * See common/modules/FsApi/README.md.\n"
             " *\n"

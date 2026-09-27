@@ -63,7 +63,7 @@ class FsApi(CallsetBase):
     """Class which provides access to the FsApiRpc callset.
     """
     name = "fsapi"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(self, api):
         super().__init__(api)
@@ -79,10 +79,15 @@ class FsApi(CallsetBase):
             raise FsApiException(func.__name__, where, result.result)
         return result
 
-    def info(self):
-        """Returns the GetFsInfo reply.
+    def mounts(self):
+        """Returns the list of mount points, for example ['/flash', '/ram'].
         """
-        return self._call(self.api.getfsinfo)
+        return list(self._call(self.api.listmounts).mount_points)
+
+    def info(self, path):
+        """Returns the GetFsInfo reply of the file system which holds path.
+        """
+        return self._call(self.api.getfsinfo, path=path)
 
     def stat(self, path):
         """Returns the FileInfo of a path.
@@ -189,11 +194,11 @@ class FsApi(CallsetBase):
     def mkdir(self, path):
         return self._call(self.api.mkdir, path=path).result
 
-    def format(self):
-        """Formats the device file system and mounts it again. All data is
-        lost. All open handles on the device are closed.
+    def format(self, mount_point):
+        """Formats one device file system and mounts it again. All its data
+        is lost. The open handles on that file system are closed.
         """
-        return self._call(self.api.format).result
+        return self._call(self.api.format, path=mount_point).result
 
     def get_file(self, path) -> bytes:
         """Reads a whole file from the device.
