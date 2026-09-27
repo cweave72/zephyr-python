@@ -13,7 +13,7 @@ try.
 app_gen                       # TUI (default)
 app_gen new --name my_app --net wifi --board esp32s3_matrix --rpc
 app_gen new --name fs_app --net eth --ip static --board w55rp20_evb_pico \
-    --rpc --module FsApi --fs-size 256
+    --rpc --module FsApi --fs-size 256 --ram-disk 16
 app_gen new ... --dry-run     # print the manifest, write nothing
 app_gen boards                # discoverable boards + net-type hints
 app_gen modules               # selectable modules + their dependency closure
@@ -22,13 +22,13 @@ app_gen update applications/my_app
 
 ## How it fits together
 
-| Piece | Role |
-|---|---|
-| `common/templates/app` | Copier template: every file whose *presence* is a fixed function of the answers |
-| `boards.py` | Board discovery from `common/boards/*/*/board.yml` + the upstream boards this workspace uses; FsApi flash layouts (`FS_LAYOUTS`) |
-| `modules.py` | Parses `depends on` out of `common/modules/*/Kconfig` and resolves the transitive closure |
-| `generate.py` | Answer assembly, Copier invocation, per-board files, and `plan_files()` |
-| `cli.py` / `tui.py` | The two front ends |
+| Piece                  | Role                                                                                                                             |
+|------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| `common/templates/app` | Copier template: every file whose *presence* is a fixed function of the answers                                                  |
+| `boards.py`            | Board discovery from `common/boards/*/*/board.yml` + the upstream boards this workspace uses; FsApi flash layouts (`FS_LAYOUTS`) |
+| `modules.py`           | Parses `depends on` out of `common/modules/*/Kconfig` and resolves the transitive closure                                        |
+| `generate.py`          | Answer assembly, Copier invocation, per-board files, and `plan_files()`                                                          |
+| `cli.py` / `tui.py`    | The two front ends                                                                                                               |
 
 The per-board files are written by `generate.py` rather than the template,
 because the board set is discovered and so cannot be enumerated in `copier.yml`.
@@ -68,35 +68,71 @@ exits; plain generation is unaffected.
 **`applications/` is west-managed.** `west update` resets it to `manifest-rev`;
 be on `main` before committing generated apps.
 
-## The FsApi module and the fs size
+## The FsApi module: flash and RAM disk
 
-Selecting `FsApi` adds a littlefs file system (`common/modules/FsApi`):
+Selecting `FsApi` adds littlefs file systems (`common/modules/FsApi`). An app
+can have a flash file system (`/flash`), a RAM disk (`/ram`), or both:
 
-- `conf/fs.conf`: flash, the littlefs cache size and, with RPC, `FSAPIRPC`.
-- `src/FsApi.c`: `app_FsApi_init()` mounts the file system. `main.c` calls it
-  before the network, so no remote call reaches an unmounted file system.
+| Option           | TUI field                        | Default | 0 means           |
+|------------------|----------------------------------|---------|-------------------|
+| `--fs-size KiB`  | FsApi flash size (KiB, 0 = none) | 128     | No `/flash` mount |
+| `--ram-disk KiB` | FsApi RAM disk (KiB, 0 = none)   | 0       | No `/ram` mount   |
+
+At least one size must be more than 0. Both sizes are stored in
+`.copier-answers.yml` (`fs_size_kb`, `ram_disk_kb`), so `app_gen update` writes
+the same overlay again.
+
+```bash
+# Flash only (default size), flash and RAM disk, RAM disk only:
+app_gen new --name a --board w55rp20_evb_pico --module FsApi
+app_gen new --name b --board w55rp20_evb_pico --module FsApi --ram-disk 16
+app_gen new --name c --board w55rp20_evb_pico --module FsApi --fs-size 0 --ram-disk 16
+```
+
+The generated files:
+
+- `conf/fs.conf`: flash (for `/flash`), the disk symbols (for `/ram`), the
+  littlefs cache size and, with RPC, `FSAPIRPC`. The cache size is 512 with a
+  RAM disk (one disk sector), and 256 otherwise.
+- `src/FsApi.c`: `app_FsApi_init()` initializes FsApi, adds the `/ram` mount
+  and logs each mount. `main.c` calls it before the network, so no remote
+  call reaches an unmounted file system. With `/flash`, a build check stops
+  the build if the overlay has no fstab node.
 - `src/rpc.c`: registers the `FsApiRpc` callset as id 2 (RPC apps only).
-- `boards/<board>.overlay`: the fs partition and the `/flash` fstab node.
+- `boards/<board>.overlay`: the flash partition and the `/flash` fstab node,
+  and the `ramdisk0` RAM disk node.
 
-`--fs-size` (TUI: "FsApi size (KiB)") sets the partition size in KiB. The
-default is 128. The size is stored in `.copier-answers.yml` as `fs_size_kb`, so
-`app_gen update` writes the same partition again. The overlay puts the
-partition at the top of flash and ends the code partition where it starts. The
-overlay also defines `APP_LFS_SIZE`, so one build can use another size without
-an edit (see the generated README).
+### Flash (`/flash`)
+
+The overlay puts the partition at the top of flash and ends the code partition
+where it starts. The overlay also defines `APP_LFS_SIZE`, so one build can use
+another size without an edit (see the generated README).
 
 app_gen writes a partition only for a board in `boards.FS_LAYOUTS`. Each entry
 gives the flash size, the erase block, the code partition and the smallest code
 size to keep. app_gen rejects a size that is not a multiple of the erase block,
 is smaller than 8 blocks, or leaves less than the smallest code size. Any other
-board gets a commented template in its overlay, and FsApi stops the build
-until you fill it in. Add a board to `FS_LAYOUTS` only after you verify its
-flash layout on hardware. For example, the esp32s3 devicetrees declare 8 MiB of
-flash, and some of those modules have 4 MiB.
+board gets a commented template in its overlay, and the generated
+`src/FsApi.c` stops the build until you fill it in. Add a board to
+`FS_LAYOUTS` only after you verify its flash layout on hardware. For example,
+the esp32s3 devicetrees declare 8 MiB of flash, and some of those modules have
+4 MiB.
 
 | Board              | Flash | Code partition   | fs size range     |
 |--------------------|-------|------------------|-------------------|
 | `w55rp20_evb_pico` | 2 MiB | `code_partition` | 32 KiB – 1532 KiB |
+
+### RAM disk (`/ram`)
+
+The RAM disk does not depend on the flash layout, so every board can have one.
+A RAM-disk-only app needs no `FS_LAYOUTS` entry. The overlay gets a
+`zephyr,ram-disk` node with 512 B sectors. `src/FsApi.c` defines the littlefs
+mount, because a littlefs fstab node can only describe a flash partition.
+
+The minimum size is 8 KiB. app_gen does not check the RAM of the board. The
+RAM disk costs its size in RAM, plus about 6 KiB for littlefs buffers. If the
+RAM disk is too big, the link fails with a RAM overflow. The content is lost at
+reset, so each boot formats `/ram`.
 
 ## Adding a module to the selector
 

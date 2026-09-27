@@ -73,7 +73,8 @@ LED0_GPIO = {
 # Flash layouts for the FsApi littlefs partition. The generator puts the
 # partition at the top of flash and ends the code partition where it starts.
 # Only boards verified on hardware are listed. Any other board gets a commented
-# template in its overlay; FsApi then stops the build until it is filled in.
+# template in its overlay; the generated src/FsApi.c then stops the build
+# until it is filled in.
 # A guessed layout could overlap the image or run past the real end of flash:
 # the esp32s3 devicetrees declare 8 MiB, and some of those modules have 4 MiB.
 #
@@ -99,6 +100,32 @@ DEFAULT_FS_SIZE_KB = 128
 # littlefs needs 2 blocks for the root directory and more for any file.
 MIN_FS_BLOCKS = 8
 
+# FsApi RAM disk (/ram). littlefs uses one 512 B sector as one block. The RAM
+# disk costs its size in RAM; the linker reports a RAM overflow if it is too
+# big for the board.
+RAM_DISK_SECTOR = 512
+MIN_RAM_DISK_KB = 8
+
+
+def fsapi_errors(fs_size_kb, ram_disk_kb, board_list):
+    """-> list of reasons why the FsApi sizes are not valid."""
+    errs = fs_size_errors(fs_size_kb, board_list) + ram_disk_errors(ram_disk_kb)
+    if fs_size_kb == 0 and ram_disk_kb == 0:
+        errs.append("FsApi needs a flash file system, a RAM disk or both: "
+                    "the fs size and the RAM disk size cannot both be 0.")
+    return errs
+
+
+def ram_disk_errors(ram_disk_kb):
+    """-> list of reasons why ram_disk_kb is not a valid RAM disk size.
+    0 means no RAM disk."""
+    if ram_disk_kb == 0:
+        return []
+    if ram_disk_kb < MIN_RAM_DISK_KB:
+        return [f"RAM disk size must be 0 (none) or at least "
+                f"{MIN_RAM_DISK_KB} KiB."]
+    return []
+
 
 def fs_layout(board):
     """-> the FsApi flash layout of a board, or None if it is not known."""
@@ -106,8 +133,11 @@ def fs_layout(board):
 
 
 def fs_size_errors(fs_size_kb, board_list):
-    """-> list of reasons why fs_size_kb does not fit the given boards."""
+    """-> list of reasons why fs_size_kb does not fit the given boards.
+    0 means no flash file system."""
     errs = []
+    if fs_size_kb == 0:
+        return errs
     size = fs_size_kb * 1024
     for board in board_list:
         lay = fs_layout(board)

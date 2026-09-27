@@ -84,7 +84,8 @@ def build_answers(*, app_name, description="A Zephyr application.",
                   ipv4_gw="192.168.1.1", use_rpc=True, use_tracing=False,
                   use_nv=None, use_shell=False, use_led=True, modules=None,
                   echoserver_transport="udp", board_list=None,
-                  fs_size_kb=boards_mod.DEFAULT_FS_SIZE_KB, base=None):
+                  fs_size_kb=boards_mod.DEFAULT_FS_SIZE_KB, ram_disk_kb=0,
+                  base=None):
     """Normalize CLI/TUI input into the answer set the template expects."""
     if net_type == "none":
         # RPC needs a network; silently dropping it would be worse than saying so.
@@ -116,6 +117,7 @@ def build_answers(*, app_name, description="A Zephyr application.",
         "modules": modules,
         "echoserver_transport": echoserver_transport,
         "fs_size_kb": int(fs_size_kb),
+        "ram_disk_kb": int(ram_disk_kb),
         "module_symbols": resolve_modules(modules, echoserver_transport, base),
         "board_list": sorted(board_list or []),
     }
@@ -218,8 +220,12 @@ def board_files(answers, base=None):
         out[f"boards/{stem}.conf"] = "\n".join(lines).rstrip() + "\n"
         overlay = _overlay(board, stem, net_type, answers.get("use_led", False))
         if "FsApi" in answers["modules"]:
-            overlay = (overlay.rstrip("\n") + "\n\n"
-                       + _fs_overlay(board, answers["fs_size_kb"]))
+            if answers["fs_size_kb"]:
+                overlay = (overlay.rstrip("\n") + "\n\n"
+                           + _fs_overlay(board, answers["fs_size_kb"]))
+            if answers["ram_disk_kb"]:
+                overlay = (overlay.rstrip("\n") + "\n\n"
+                           + _ram_disk_overlay(answers["ram_disk_kb"]))
         out[f"boards/{stem}.overlay"] = overlay
     return out
 
@@ -247,6 +253,34 @@ _FSTAB_NODE = (
 )
 
 
+def _ram_disk_overlay(ram_disk_kb):
+    """Devicetree fragment for the FsApi RAM disk (/ram).
+
+    The disk does not depend on the flash layout, so every board gets it.
+    src/FsApi.c defines the littlefs mount: a littlefs fstab node can only
+    describe a flash partition.
+    """
+    sectors = ram_disk_kb * 1024 // boards_mod.RAM_DISK_SECTOR
+    return (
+        f"/*\n"
+        f" * RAM disk for the /ram file system: {sectors} sectors of "
+        f"{boards_mod.RAM_DISK_SECTOR} B\n"
+        f" * ({ram_disk_kb} KiB). Its content is lost at reset, so each boot "
+        f"formats it.\n"
+        f" * src/FsApi.c defines the mount. Change sector-count to change "
+        f"the size.\n"
+        f" */\n"
+        f"/ {{\n"
+        f"\tramdisk0: ramdisk0 {{\n"
+        f"\t\tcompatible = \"zephyr,ram-disk\";\n"
+        f"\t\tdisk-name = \"RAM\";\n"
+        f"\t\tsector-size = <{boards_mod.RAM_DISK_SECTOR}>;\n"
+        f"\t\tsector-count = <{sectors}>;\n"
+        f"\t}};\n"
+        f"}};\n"
+    )
+
+
 def _fs_overlay(board, fs_size_kb):
     """Devicetree fragment for the FsApi littlefs partition and the /flash
     fstab node.
@@ -256,8 +290,9 @@ def _fs_overlay(board, fs_size_kb):
     changeable per build, without an edit.
 
     For any other board: a commented template. A guessed layout could overlap
-    the image or run past the real end of flash. Without the node FsApi stops
-    the build with a clear message, so an unfilled template fails loudly.
+    the image or run past the real end of flash. Without the node the
+    generated src/FsApi.c stops the build with a clear message, so an unfilled
+    template fails loudly.
     """
     lay = boards_mod.fs_layout(board)
     if lay is None:
@@ -265,7 +300,8 @@ def _fs_overlay(board, fs_size_kb):
             "/* FsApi: the generator does not know the flash layout of this\n"
             " * board, so fill in a littlefs partition and the fstab node\n"
             " * below. The partition must not overlap the code partition\n"
-            " * or the settings partition. Until then FsApi stops the build.\n"
+            " * or the settings partition. Until then src/FsApi.c stops the\n"
+            " * build.\n"
             " * See common/modules/FsApi/README.md.\n"
             " *\n"
             " * &flash0 {\n"
@@ -594,6 +630,7 @@ def update(dest, base=None):
             modules=stored.get("modules") or {},
             echoserver_transport=stored.get("echoserver_transport", "udp"),
             fs_size_kb=stored.get("fs_size_kb", boards_mod.DEFAULT_FS_SIZE_KB),
+            ram_disk_kb=stored.get("ram_disk_kb", 0),
             board_list=sorted(_boards_on_disk(dest)), base=base)
         refreshed = dict(board_files(answers, base))
         refreshed["conf/modules.conf"] = modules_conf(answers, base)

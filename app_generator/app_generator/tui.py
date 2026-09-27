@@ -175,9 +175,11 @@ class TuiApp(App):
                 yield Label("Modules", classes="heading")
                 for name in modules_mod.SELECTABLE:
                     yield ModuleRow(name)
-                yield Label("FsApi size (KiB)", id="fs_size_label")
+                yield Label("FsApi flash size (KiB, 0 = none)", id="fs_size_label")
                 yield Input(value=str(boards_mod.DEFAULT_FS_SIZE_KB),
                             id="fs_size_kb", disabled=True)
+                yield Label("FsApi RAM disk (KiB, 0 = none)")
+                yield Input(value="0", id="ram_disk_kb", disabled=True)
                 yield Label("Pulled in by deps:", classes="heading")
                 yield Static("-", id="closure")
 
@@ -203,10 +205,16 @@ class TuiApp(App):
                 out[name] = sel.value or modules_mod.DEFAULT_LOG_LEVEL
         return out
 
-    def fs_size_kb(self):
-        """-> the FS size field as an int, or None if it is not a number."""
-        text = self.query_one("#fs_size_kb", Input).value.strip()
+    def int_field(self, wid):
+        """-> the value of an Input as an int, or None if it is not a number."""
+        text = self.query_one(f"#{wid}", Input).value.strip()
         return int(text) if text.isdigit() else None
+
+    def fs_size_kb(self):
+        return self.int_field("fs_size_kb")
+
+    def ram_disk_kb(self):
+        return self.int_field("ram_disk_kb")
 
     def current_answers(self):
         net = self.query_one("#net_type", Select).value
@@ -226,7 +234,9 @@ class TuiApp(App):
             use_led=self.query_one("#use_led", Checkbox).value,
             modules=self.selected_modules(),
             board_list=list(self.query_one("#boards", SelectionList).selected),
-            fs_size_kb=self.fs_size_kb() or boards_mod.DEFAULT_FS_SIZE_KB,
+            fs_size_kb=(boards_mod.DEFAULT_FS_SIZE_KB if self.fs_size_kb() is None
+                        else self.fs_size_kb()),
+            ram_disk_kb=self.ram_disk_kb() or 0,
         )
 
     # ---- reactive wiring -------------------------------------------------
@@ -271,9 +281,10 @@ class TuiApp(App):
             ticked = self.query_one(f"#mod_{name}", Checkbox).value
             self.query_one(f"#lvl_{name}", Select).disabled = not ticked
 
-        # The FS size applies only to FsApi.
-        self.query_one("#fs_size_kb", Input).disabled = not self.query_one(
-            "#mod_FsApi", Checkbox).value
+        # The FS size and the RAM disk apply only to FsApi.
+        fsapi = self.query_one("#mod_FsApi", Checkbox).value
+        for wid in ("fs_size_kb", "ram_disk_kb"):
+            self.query_one(f"#{wid}", Input).disabled = not fsapi
 
         # TRACEMODULE depends on TRACERAM, which the tracing option enables.
         tracing = self.query_one("#use_tracing", Checkbox)
@@ -296,11 +307,17 @@ class TuiApp(App):
 
         if self.query_one("#mod_FsApi", Checkbox).value:
             size = self.fs_size_kb()
-            field = self.query_one("#fs_size_kb", Input)
-            fs_errs = (["FsApi size must be a whole number of KiB."]
+            ram = self.ram_disk_kb()
+            fs_errs = (["FsApi flash size must be a whole number of KiB."]
                        if size is None else boards_mod.fs_size_errors(size, boards))
-            field.set_class(bool(fs_errs), "-invalid")
-            errs += fs_errs
+            ram_errs = (["FsApi RAM disk size must be a whole number of KiB."]
+                        if ram is None else boards_mod.ram_disk_errors(ram))
+            if size == 0 and ram == 0:
+                fs_errs.append("FsApi flash size and RAM disk size cannot "
+                               "both be 0.")
+            self.query_one("#fs_size_kb", Input).set_class(bool(fs_errs), "-invalid")
+            self.query_one("#ram_disk_kb", Input).set_class(bool(ram_errs), "-invalid")
+            errs += fs_errs + ram_errs
 
         net = self.query_one("#net_type", Select).value
         if net != "none" and self.query_one("#ip_static", RadioButton).value:
@@ -340,7 +357,7 @@ class TuiApp(App):
         if net == "serial":
             warns.append("serial: you must set zephyr,uart-pipe in the board "
                          "overlay before it will build.")
-        if "FsApi" in answers["modules"]:
+        if "FsApi" in answers["modules"] and answers["fs_size_kb"]:
             for b in answers["board_list"]:
                 if boards_mod.fs_layout(b) is None:
                     warns.append(f"{b}: no known flash layout; fill in the "

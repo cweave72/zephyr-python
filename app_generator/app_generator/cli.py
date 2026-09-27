@@ -87,8 +87,13 @@ def tui(ctx):
               type=click.Choice(["udp", "tcp"]),
               help="Transport for EchoServer, if selected.")
 @click.option("--fs-size", "fs_size_kb", default=boards_mod.DEFAULT_FS_SIZE_KB,
-              type=click.IntRange(min=1), show_default=True,
-              help="FsApi file system size in KiB, if FsApi is selected.")
+              type=click.IntRange(min=0), show_default=True,
+              help="FsApi flash file system (/flash) size in KiB, 0 for none. "
+                   "If FsApi is selected.")
+@click.option("--ram-disk", "ram_disk_kb", default=0,
+              type=click.IntRange(min=0), show_default=True,
+              help="FsApi RAM disk (/ram) size in KiB, 0 for none. "
+                   "If FsApi is selected.")
 @click.option("--rpc/--no-rpc", default=True, help="Include the ProtoRpc server.")
 @click.option("--tracing/--no-tracing", default=False, help="Include CTF tracing.")
 @click.option("--nv/--no-nv", default=None, help="Include NVS settings.")
@@ -100,8 +105,8 @@ def tui(ctx):
 @click.option("--overwrite", is_flag=True, help="Overwrite an existing app.")
 @click.pass_context
 def new(ctx, name, desc, net_type, ip_mode, addr, mask, gw, board_list,
-        module_specs, echoserver_transport, fs_size_kb, rpc, tracing, nv,
-        shell, led, dest, dry_run, overwrite):
+        module_specs, echoserver_transport, fs_size_kb, ram_disk_kb, rpc,
+        tracing, nv, shell, led, dest, dry_run, overwrite):
     """Generate a new application non-interactively."""
     console = Console()
     known = {b for b, _, _ in boards_mod.all_boards()}
@@ -118,16 +123,17 @@ def new(ctx, name, desc, net_type, ip_mode, addr, mask, gw, board_list,
 
     modules = _parse_modules(module_specs)
     if "FsApi" in modules:
-        errs = boards_mod.fs_size_errors(fs_size_kb, board_list)
+        errs = boards_mod.fsapi_errors(fs_size_kb, ram_disk_kb, board_list)
         for e in errs:
             console.print(Text(e, style="bold red"))
         if errs:
             raise click.exceptions.Exit(1)
-        for b in board_list:
+        for b in (board_list if fs_size_kb else []):
             if boards_mod.fs_layout(b) is None:
                 console.print(Text(
                     f"{b}: no known flash layout. Its overlay gets a commented "
-                    f"FsApi template; the build stops until you fill it in.",
+                    f"FsApi template; src/FsApi.c stops the build until you "
+                    f"fill it in.",
                     style="yellow"))
 
     answers = gen.build_answers(
@@ -135,7 +141,7 @@ def new(ctx, name, desc, net_type, ip_mode, addr, mask, gw, board_list,
         ipv4_addr=addr, ipv4_mask=mask, ipv4_gw=gw, use_rpc=rpc,
         use_tracing=tracing, use_nv=nv, use_shell=shell, use_led=led,
         modules=modules, echoserver_transport=echoserver_transport,
-        board_list=board_list, fs_size_kb=fs_size_kb)
+        board_list=board_list, fs_size_kb=fs_size_kb, ram_disk_kb=ram_disk_kb)
 
     dest = dest or gen.default_dest(name)
     files = gen.plan_files(answers)
