@@ -70,6 +70,65 @@ LED0_GPIO = {
 }
 
 
+# Flash layouts for the FsApi littlefs partition. The generator puts the
+# partition at the top of flash and ends the code partition where it starts.
+# Only boards verified on hardware are listed. Any other board gets a commented
+# template in its overlay; FsApi then stops the build until it is filled in.
+# A guessed layout could overlap the image or run past the real end of flash:
+# the esp32s3 devicetrees declare 8 MiB, and some of those modules have 4 MiB.
+#
+#   flash_size     -- bytes of flash, as the board devicetree declares it
+#   erase_block    -- erase block size in bytes; the fs size must be a multiple
+#   flash_node     -- nodelabel of the flash device node
+#   code_partition -- nodelabel of the partition the image runs from
+#   code_start     -- offset of that partition
+#   min_code_size  -- smallest code partition app_gen allows, in bytes
+FS_LAYOUTS = {
+    "w55rp20_evb_pico": {
+        "flash_size": 2 * 1024 * 1024,
+        "erase_block": 4096,
+        "flash_node": "flash0",
+        "code_partition": "code_partition",
+        "code_start": 0x100,
+        "min_code_size": 512 * 1024,
+    },
+}
+
+DEFAULT_FS_SIZE_KB = 128
+
+# littlefs needs 2 blocks for the root directory and more for any file.
+MIN_FS_BLOCKS = 8
+
+
+def fs_layout(board):
+    """-> the FsApi flash layout of a board, or None if it is not known."""
+    return FS_LAYOUTS.get(board)
+
+
+def fs_size_errors(fs_size_kb, board_list):
+    """-> list of reasons why fs_size_kb does not fit the given boards."""
+    errs = []
+    size = fs_size_kb * 1024
+    for board in board_list:
+        lay = fs_layout(board)
+        if lay is None:
+            continue
+        eb = lay["erase_block"]
+        if size % eb:
+            errs.append(f"{board}: fs size {fs_size_kb} KiB is not a multiple "
+                        f"of the {eb // 1024} KiB erase block.")
+        if size < MIN_FS_BLOCKS * eb:
+            errs.append(f"{board}: fs size must be at least "
+                        f"{MIN_FS_BLOCKS * eb // 1024} KiB.")
+        max_size = lay["flash_size"] - lay["code_start"] - lay["min_code_size"]
+        max_size -= max_size % eb
+        if size > max_size:
+            errs.append(f"{board}: fs size must be at most {max_size // 1024} "
+                        f"KiB, to leave {lay['min_code_size'] // 1024} KiB "
+                        f"for code.")
+    return errs
+
+
 def workspace_base():
     """Locates the workspace root.
 

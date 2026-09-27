@@ -83,7 +83,8 @@ def build_answers(*, app_name, description="A Zephyr application.",
                   ipv4_addr="192.168.1.15", ipv4_mask="255.255.255.0",
                   ipv4_gw="192.168.1.1", use_rpc=True, use_tracing=False,
                   use_nv=None, use_shell=False, use_led=True, modules=None,
-                  echoserver_transport="udp", board_list=None, base=None):
+                  echoserver_transport="udp", board_list=None,
+                  fs_size_kb=boards_mod.DEFAULT_FS_SIZE_KB, base=None):
     """Normalize CLI/TUI input into the answer set the template expects."""
     if net_type == "none":
         # RPC needs a network; silently dropping it would be worse than saying so.
@@ -114,6 +115,7 @@ def build_answers(*, app_name, description="A Zephyr application.",
         "use_led": use_led,
         "modules": modules,
         "echoserver_transport": echoserver_transport,
+        "fs_size_kb": int(fs_size_kb),
         "module_symbols": resolve_modules(modules, echoserver_transport, base),
         "board_list": sorted(board_list or []),
     }
@@ -214,9 +216,108 @@ def board_files(answers, base=None):
             lines += ["CONFIG_WIFI_ESP32=y", "CONFIG_ESP32_WIFI_STA_RECONNECT=y", ""]
 
         out[f"boards/{stem}.conf"] = "\n".join(lines).rstrip() + "\n"
-        out[f"boards/{stem}.overlay"] = _overlay(
-            board, stem, net_type, answers.get("use_led", False))
+        overlay = _overlay(board, stem, net_type, answers.get("use_led", False))
+        if "FsApi" in answers["modules"]:
+            overlay = (overlay.rstrip("\n") + "\n\n"
+                       + _fs_overlay(board, answers["fs_size_kb"]))
+        out[f"boards/{stem}.overlay"] = overlay
     return out
+
+
+# The fstab node properties. cache-size must match CONFIG_FS_LITTLEFS_CACHE_SIZE
+# in the template's conf/fs.conf, or the second open file fails with -ENOMEM
+# (FsApi checks this at build time).
+_FSTAB_NODE = (
+    "/* The file system which FsApi mounts. FsApi finds it by the nodelabel. */\n"
+    "/ {{\n"
+    "\tfstab {{\n"
+    "\t\tcompatible = \"zephyr,fstab\";\n"
+    "\t\tfsapi_lfs: fsapi_lfs {{\n"
+    "\t\t\tcompatible = \"zephyr,fstab,littlefs\";\n"
+    "\t\t\tmount-point = \"/lfs\";\n"
+    "\t\t\tpartition = <&{part}>;\n"
+    "\t\t\tread-size = <16>;\n"
+    "\t\t\tprog-size = <16>;\n"
+    "\t\t\tcache-size = <256>;\n"
+    "\t\t\tlookahead-size = <32>;\n"
+    "\t\t\tblock-cycles = <512>;\n"
+    "\t\t}};\n"
+    "\t}};\n"
+    "}};\n"
+)
+
+
+def _fs_overlay(board, fs_size_kb):
+    """Devicetree fragment for the FsApi littlefs partition and fstab node.
+
+    For a board in boards.FS_LAYOUTS: the partition goes at the top of flash,
+    and the code partition ends where it starts. APP_LFS_SIZE keeps the size
+    changeable per build, without an edit.
+
+    For any other board: a commented template. A guessed layout could overlap
+    the image or run past the real end of flash. Without the node FsApi stops
+    the build with a clear message, so an unfilled template fails loudly.
+    """
+    lay = boards_mod.fs_layout(board)
+    if lay is None:
+        return (
+            "/* FsApi: the generator does not know the flash layout of this\n"
+            " * board, so fill in a littlefs partition and the fsapi_lfs fstab\n"
+            " * node below. The partition must not overlap the code partition\n"
+            " * or the settings partition. Until then FsApi stops the build.\n"
+            " * See common/modules/FsApi/README.md.\n"
+            " *\n"
+            " * &flash0 {\n"
+            " *     partitions {\n"
+            " *         lfs_partition: partition@<offset> {\n"
+            " *             label = \"lfs\";\n"
+            f" *             reg = <<offset> DT_SIZE_K({fs_size_kb})>;\n"
+            " *         };\n"
+            " *     };\n"
+            " * };\n"
+            " *\n"
+            + "".join(" * " + ln.replace("\t", "    ") + "\n" if ln else " *\n"
+                      for ln in _FSTAB_NODE.format(part="lfs_partition")
+                      .splitlines()[1:])
+            + " */\n"
+        )
+
+    eb = lay["erase_block"]
+    flash = lay["flash_size"]
+    start = lay["code_start"]
+    offset = flash - fs_size_kb * 1024
+    return (
+        f"/*\n"
+        f" * FsApi file system: littlefs at the top of flash. The code partition\n"
+        f" * ends where the fs partition starts.\n"
+        f" *\n"
+        f" * APP_LFS_SIZE sets the fs size. It must be a multiple of the\n"
+        f" * {eb // 1024} KiB erase block. Override it for one build without an edit:\n"
+        f" *   make build CMAKE_OPTS=\"-DDTS_EXTRA_CPPFLAGS=-DAPP_LFS_SIZE=0x40000\"\n"
+        f" * An override that moves the partition makes dtc warn about the node\n"
+        f" * unit address (unit_address_vs_reg). The warning is harmless.\n"
+        f" */\n"
+        f"#ifndef APP_LFS_SIZE\n"
+        f"#define APP_LFS_SIZE\tDT_SIZE_K({fs_size_kb})\n"
+        f"#endif\n"
+        f"#define APP_FLASH_SIZE\t0x{flash:x}\n"
+        f"#define APP_LFS_OFFSET\t(APP_FLASH_SIZE - APP_LFS_SIZE)\n"
+        f"\n"
+        f"&{lay['code_partition']} {{\n"
+        f"\treg = <0x{start:x} (APP_LFS_OFFSET - 0x{start:x})>;\n"
+        f"}};\n"
+        f"\n"
+        f"&{lay['flash_node']} {{\n"
+        f"\tpartitions {{\n"
+        f"\t\tlfs_partition: partition@{offset:x} {{\n"
+        f"\t\t\tlabel = \"lfs\";\n"
+        f"\t\t\treg = <APP_LFS_OFFSET APP_LFS_SIZE>;\n"
+        f"\t\t}};\n"
+        f"\t}};\n"
+        f"}};\n"
+        f"\n"
+        + _FSTAB_NODE.format(part="lfs_partition")
+    )
 
 
 def _led_overlay(board):
@@ -378,6 +479,8 @@ def plan_files(answers, base=None):
         files += ["conf/tracing.conf", "conf/tracemodule.conf", "src/trace.c"]
     if answers.get("use_led"):
         files += ["conf/led.conf", "src/led.c", "src/led.h"]
+    if "FsApi" in answers["modules"]:
+        files.append("conf/fs.conf")
     for mod in answers["modules"]:
         if mod != "TraceModule":       # config-only, no _init(), no source
             files.append(f"src/{mod}.c")
@@ -489,6 +592,7 @@ def update(dest, base=None):
             use_led=stored.get("use_led", False),
             modules=stored.get("modules") or {},
             echoserver_transport=stored.get("echoserver_transport", "udp"),
+            fs_size_kb=stored.get("fs_size_kb", boards_mod.DEFAULT_FS_SIZE_KB),
             board_list=sorted(_boards_on_disk(dest)), base=base)
         refreshed = dict(board_files(answers, base))
         refreshed["conf/modules.conf"] = modules_conf(answers, base)

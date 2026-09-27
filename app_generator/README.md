@@ -12,6 +12,8 @@ try.
 ```bash
 app_gen                       # TUI (default)
 app_gen new --name my_app --net wifi --board esp32s3_matrix --rpc
+app_gen new --name fs_app --net eth --ip static --board w55rp20_evb_pico \
+    --rpc --module FsApi --fs-size 256
 app_gen new ... --dry-run     # print the manifest, write nothing
 app_gen boards                # discoverable boards + net-type hints
 app_gen modules               # selectable modules + their dependency closure
@@ -23,7 +25,7 @@ app_gen update applications/my_app
 | Piece | Role |
 |---|---|
 | `common/templates/app` | Copier template: every file whose *presence* is a fixed function of the answers |
-| `boards.py` | Board discovery from `common/boards/*/*/board.yml` + the upstream boards this workspace uses |
+| `boards.py` | Board discovery from `common/boards/*/*/board.yml` + the upstream boards this workspace uses; FsApi flash layouts (`FS_LAYOUTS`) |
 | `modules.py` | Parses `depends on` out of `common/modules/*/Kconfig` and resolves the transitive closure |
 | `generate.py` | Answer assembly, Copier invocation, per-board files, and `plan_files()` |
 | `cli.py` / `tui.py` | The two front ends |
@@ -65,6 +67,36 @@ exits; plain generation is unaffected.
 
 **`applications/` is west-managed.** `west update` resets it to `manifest-rev`;
 be on `main` before committing generated apps.
+
+## The FsApi module and the fs size
+
+Selecting `FsApi` adds a littlefs file system (`common/modules/FsApi`):
+
+- `conf/fs.conf`: flash, the littlefs cache size and, with RPC, `FSAPIRPC`.
+- `src/FsApi.c`: `app_FsApi_init()` mounts the file system. `main.c` calls it
+  before the network, so no remote call reaches an unmounted file system.
+- `src/rpc.c`: registers the `FsApiRpc` callset as id 2 (RPC apps only).
+- `boards/<board>.overlay`: the fs partition and the `fsapi_lfs` fstab node.
+
+`--fs-size` (TUI: "FsApi size (KiB)") sets the partition size in KiB. The
+default is 128. The size is stored in `.copier-answers.yml` as `fs_size_kb`, so
+`app_gen update` writes the same partition again. The overlay puts the
+partition at the top of flash and ends the code partition where it starts. The
+overlay also defines `APP_LFS_SIZE`, so one build can use another size without
+an edit (see the generated README).
+
+app_gen writes a partition only for a board in `boards.FS_LAYOUTS`. Each entry
+gives the flash size, the erase block, the code partition and the smallest code
+size to keep. app_gen rejects a size that is not a multiple of the erase block,
+is smaller than 8 blocks, or leaves less than the smallest code size. Any other
+board gets a commented template in its overlay, and FsApi stops the build
+until you fill it in. Add a board to `FS_LAYOUTS` only after you verify its
+flash layout on hardware. For example, the esp32s3 devicetrees declare 8 MiB of
+flash, and some of those modules have 4 MiB.
+
+| Board              | Flash | Code partition   | fs size range     |
+|--------------------|-------|------------------|-------------------|
+| `w55rp20_evb_pico` | 2 MiB | `code_partition` | 32 KiB – 1532 KiB |
 
 ## Adding a module to the selector
 

@@ -28,7 +28,7 @@ DEFAULT_LOG_LEVEL = "inf"
 # Kconfig symbol is resolved from the directory's Kconfig (see symbol_map()),
 # because it is not always the dirname uppercased -- slip defines SLIP_FRAME.
 SELECTABLE = [
-    "MqttClient", "EchoServer", "NvParms", "Publisher",
+    "MqttClient", "EchoServer", "FsApi", "NvParms", "Publisher",
     "TcpEcho", "TcpServer", "TraceModule", "UdpServer",
 ]
 

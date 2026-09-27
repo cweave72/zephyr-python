@@ -175,6 +175,9 @@ class TuiApp(App):
                 yield Label("Modules", classes="heading")
                 for name in modules_mod.SELECTABLE:
                     yield ModuleRow(name)
+                yield Label("FsApi size (KiB)", id="fs_size_label")
+                yield Input(value=str(boards_mod.DEFAULT_FS_SIZE_KB),
+                            id="fs_size_kb", disabled=True)
                 yield Label("Pulled in by deps:", classes="heading")
                 yield Static("-", id="closure")
 
@@ -200,6 +203,11 @@ class TuiApp(App):
                 out[name] = sel.value or modules_mod.DEFAULT_LOG_LEVEL
         return out
 
+    def fs_size_kb(self):
+        """-> the FS size field as an int, or None if it is not a number."""
+        text = self.query_one("#fs_size_kb", Input).value.strip()
+        return int(text) if text.isdigit() else None
+
     def current_answers(self):
         net = self.query_one("#net_type", Select).value
         static = self.query_one("#ip_static", RadioButton).value
@@ -218,6 +226,7 @@ class TuiApp(App):
             use_led=self.query_one("#use_led", Checkbox).value,
             modules=self.selected_modules(),
             board_list=list(self.query_one("#boards", SelectionList).selected),
+            fs_size_kb=self.fs_size_kb() or boards_mod.DEFAULT_FS_SIZE_KB,
         )
 
     # ---- reactive wiring -------------------------------------------------
@@ -262,6 +271,10 @@ class TuiApp(App):
             ticked = self.query_one(f"#mod_{name}", Checkbox).value
             self.query_one(f"#lvl_{name}", Select).disabled = not ticked
 
+        # The FS size applies only to FsApi.
+        self.query_one("#fs_size_kb", Input).disabled = not self.query_one(
+            "#mod_FsApi", Checkbox).value
+
         # TRACEMODULE depends on TRACERAM, which the tracing option enables.
         tracing = self.query_one("#use_tracing", Checkbox)
         if self.query_one("#mod_TraceModule", Checkbox).value:
@@ -277,8 +290,17 @@ class TuiApp(App):
             errs.append("Name is required.")
         elif not re.fullmatch(r"[a-z][a-z0-9_]*", name):
             errs.append("Name must be lowercase alphanumeric/underscore.")
-        if not self.query_one("#boards", SelectionList).selected:
+        boards = list(self.query_one("#boards", SelectionList).selected)
+        if not boards:
             errs.append("Select at least one board.")
+
+        if self.query_one("#mod_FsApi", Checkbox).value:
+            size = self.fs_size_kb()
+            field = self.query_one("#fs_size_kb", Input)
+            fs_errs = (["FsApi size must be a whole number of KiB."]
+                       if size is None else boards_mod.fs_size_errors(size, boards))
+            field.set_class(bool(fs_errs), "-invalid")
+            errs += fs_errs
 
         net = self.query_one("#net_type", Select).value
         if net != "none" and self.query_one("#ip_static", RadioButton).value:
@@ -318,6 +340,11 @@ class TuiApp(App):
         if net == "serial":
             warns.append("serial: you must set zephyr,uart-pipe in the board "
                          "overlay before it will build.")
+        if "FsApi" in answers["modules"]:
+            for b in answers["board_list"]:
+                if boards_mod.fs_layout(b) is None:
+                    warns.append(f"{b}: no known flash layout; fill in the "
+                                 "FsApi template in its overlay.")
         self.query_one("#warnings", Static).update(
             "\n".join(f"! {w}" for w in warns))
         self.query_one("#generate", Button).disabled = bool(self.form_errors())
