@@ -6,6 +6,7 @@ to the littlefs file systems of a Zephyr device, for example `/flash` and
 
 1. **`fsapi-cli`**. A command line tool: list, copy, move, remove and format.
 2. **`FsApi` class**. A Python API for scripts and tests.
+3. **`fsapi-brand`**. Builds a littlefs image of a directory for branding.
 
 The device code is in `common/modules/FsApi`. The callset is defined in
 `proto/FsApiRpc/FsApiRpc.proto`. `applications/fs_demo` is an example
@@ -97,6 +98,36 @@ In a new shell, the first command asks the device for its callsets. It prints
 the callset table before its own output. Thus do not pipe the first `cat`
 command in a new shell to a file. Run `fsapi-cli --ip <device-ip>
 --refresh-bindings` first.
+
+## fsapi-brand
+
+`fsapi-brand` builds a littlefs image of a directory tree for a flash mount of
+an application build. `make brand` runs it and flashes the image. See
+"Branding" in `common/modules/FsApi/README.md`.
+
+```sh
+fsapi-brand --build applications/fs_demo/build \
+            --src applications/fs_demo/brand/default
+```
+
+| Option          | Description                                                           |
+|-----------------|-----------------------------------------------------------------------|
+| `--build DIR`   | The application build directory. It holds `fsapi_layout.json`.        |
+| `--src DIR`     | The directory tree. It maps to the mount root. Dot files are skipped. |
+| `--mount MOUNT` | The flash mount, for example `/flash`. Required for more mounts.      |
+| `--out DIR`     | The output directory. The default is `<build>/brand`.                 |
+
+Output:
+
+```
+Brand image for /flash: 131072 B at 0x101e0000 (partition offset 0x1e0000), 6 of 32 blocks used.
+  /flash/etc/config/net.conf  (243 B)
+Wrote applications/fs_demo/build/brand/brand.bin, brand.hex, brand.json.
+```
+
+The tool uses `littlefs-python` and pins the littlefs on-disk format to 2.1,
+the format of the device littlefs. After it writes the image, it mounts the
+image again and compares each file.
 
 ## FsApi class
 

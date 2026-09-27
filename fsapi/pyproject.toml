@@ -8,10 +8,13 @@ dependencies = [
     "betterproto[compiler]==2.0.0b6",
     "logging-tree>=1.10",
     "rich>=13.9.4",
+    "littlefs-python>=0.12",
+    "intelhex>=2.3.0",
 ]
 
 [project.scripts]
 fsapi-cli = "fsapi.cli:entrypoint"
+fsapi-brand = "fsapi.brand:entrypoint"
 
 [tool.proto_builder]
 name = "fsapi"
