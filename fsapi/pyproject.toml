@@ -1,0 +1,27 @@
+[project]
+name = "fsapi"
+version = "0.2.0"
+description = "Package for remote access to a device file system over the FsApiRpc callset."
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1.3",
+    "betterproto[compiler]==2.0.0b6",
+    "logging-tree>=1.10",
+    "rich>=13.9.4",
+]
+
+[project.scripts]
+fsapi-cli = "fsapi.cli:entrypoint"
+
+[tool.proto_builder]
+name = "fsapi"
+proto_file = "FsApiRpc"
+proto_mod = "fsapi"
+callset_name = "Callset"
+
+[build-system]
+requires = ["setuptools", "proto_builder", "betterproto[compiler]==2.0.0b6"]
+build-backend = "proto_builder.backend"
+
+[tool.uv.sources]
+proto_builder = { path = "../proto_builder" }
