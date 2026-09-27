@@ -33,7 +33,7 @@ def cli(ctx, **kwargs):
     params = get_params(**kwargs)
 
     try:
-        api, conn = cli_init(ctx, params)
+        api, conn, bindings = cli_init(ctx, params)
     except Exception as e:
         logger.error(f"Exiting due to error: {str(e)}")
         sys.exit(1)

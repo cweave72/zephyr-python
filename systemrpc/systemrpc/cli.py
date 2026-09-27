@@ -6,6 +6,7 @@ from pathlib import Path
 
 # ProtoRpc modules
 from protorpc.cli import get_params
+from protorpc.util import ProtoRpcException
 from protorpc.cli.common_opts import cli_common_opts, cli_init
 from protorpc.cli.common_opts import CONTEXT_SETTINGS
 from systemrpc import SystemRpc
@@ -35,9 +36,14 @@ def cli(ctx, **kwargs):
     params = get_params(**kwargs)
 
     try:
-        api, conn = cli_init(ctx, params)
+        api, conn, bindings = cli_init(ctx, params)
     except Exception as e:
         logger.error(f"Exiting due to error: {str(e)}")
+        sys.exit(1)
+
+    try:
+        SystemRpc.check_version(bindings)
+    except ProtoRpcException:
         sys.exit(1)
 
     connections.append(conn)

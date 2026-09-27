@@ -87,14 +87,18 @@ def build_api(
     if callsets is None or len(callsets) == 0:
         return api, conn
 
+    # FrameDict is a module global. Clear it, so callsets from a previous
+    # build_api call do not remain.
+    FrameDict.clear()
+
     # Process each callset provided.
     for callset_cls, id_, name in callsets:
-        parse_callset_fields(callset_cls, cs_id=id_)
+        parse_callset_fields(callset_cls, cs_id=id_, cs_name=name)
 
     logger.debug(f"FrameDict={FrameDict}")
 
-    for callset in FrameDict:
-        logger.debug(f"Adding api for callset={callset}")
-        api[name] = Api(header_cls, FrameDict[callset], conn)
+    for name, callset in FrameDict.items():
+        logger.debug(f"Adding api for callset={name}")
+        api[name] = Api(header_cls, callset, conn)
 
     return api, conn

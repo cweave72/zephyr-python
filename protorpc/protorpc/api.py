@@ -64,6 +64,7 @@ def decode_varint(encoded):
 def parse_callset_fields(
     cls_curr,
     cs_id=None,
+    cs_name=None,
     cs_curr=None,
     msg_curr=None,
     is_top=True
@@ -72,15 +73,18 @@ def parse_callset_fields(
     Params:
         cls_curr : First call should be the Callset class to be processed.
         cs_id    : First call should provide the callset ID.
+        cs_name  : First call should provide the callset name (the proto
+                   package). It is the FrameDict key. All callset classes
+                   have the same class name ("Callset"), thus the class name
+                   cannot be the key.
         cs_curr  : For internal recursive use only.
         msg_curr : For internal recursive use only.
         is_top   : Do not use, by default indicates this was the first call.
 
     Call per callset:
-        parse_callset_field(Callset0, cs_id=0)
-        parse_callset_field(Callset1, cs_id=1)
+        parse_callset_fields(Callset0, cs_id=0, cs_name="system")
+        parse_callset_fields(Callset1, cs_id=1, cs_name="rtosutils")
         ...
-        parse_callset_field(CallsetN, cs_id=2)
     """
     global FrameDict
 
@@ -91,7 +95,7 @@ def parse_callset_fields(
     if is_top:
         # Top-level call. Recurse from here, then done.
         logger.debug(f"Parsing callset: {cls_curr.__name__}")
-        cs_name = cls_curr.__name__
+        cs_name = cs_name or cls_curr.__name__
         cs_inst = FrameCallset(name=cs_name, id=cs_id, cls=cls_curr, msgs={})
         FrameDict[cs_name] = cs_inst
         parse_callset_fields(cls_curr,
@@ -364,7 +368,7 @@ def call_factory(
                       no_reply=no_reply)
         req.send_sync()
         return req.reply
-    call_func.__name__ = msg_name.rstrip('_call')
+    call_func.__name__ = msg_name.removesuffix('_call')
     return call_func
 
 
