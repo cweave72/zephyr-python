@@ -10,6 +10,9 @@ dependencies = [
     "rich>=13.9.4",
     "littlefs-python>=0.12",
     "intelhex>=2.3.0",
+    "proto_builder",
+    "grpcio-tools",
+    "pyyaml",
 ]
 
 [project.scripts]

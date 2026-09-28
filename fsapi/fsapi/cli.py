@@ -4,11 +4,14 @@ from __future__ import annotations
 import sys
 import atexit
 import logging
-from typing import Any, Callable
+import tempfile
+from pathlib import Path
+from typing import Any, Callable, NoReturn, Optional
 
 import click
 
 from rich.console import Console
+from rich.markup import escape
 
 # ProtoRpc modules
 from protorpc.cli import get_params
@@ -291,6 +294,106 @@ def format(ctx: click.Context, mount_point: str, yes: bool) -> None:
         click.confirm(f"Erase all data on {mount_point}?", abort=True)
     run(fs.format, mount_point)
     click.echo(f"Formatted {mount_point}.")
+
+
+def blob_error(e: Exception) -> NoReturn:
+    """Prints a blob error and exits with status 1.
+
+    Args:
+        e: The BlobError.
+    """
+    Console(stderr=True).print(f"[red]error:[/red] {escape(str(e))}",
+                               highlight=False)
+    sys.exit(1)
+
+
+PROTO_PATH_HELP = ("A proto directory, after $PROTO_BASE. Repeat for more "
+                   "directories, for example the app proto/ directory.")
+
+
+@cli.command
+@click.argument('yaml_file', metavar='YAML',
+                type=click.Path(exists=True, dir_okay=False))
+@click.argument('path')
+@click.option('--proto-path', 'proto_paths', multiple=True,
+              type=click.Path(file_okay=False), help=PROTO_PATH_HELP)
+@click.pass_context
+def pbput(ctx: click.Context, yaml_file: str, path: str,
+          proto_paths: tuple[str, ...]) -> None:
+    """Writes a .pb.yaml file as a protobuf blob to the device file PATH.
+    The replace is atomic: the tool writes PATH.tmp, then renames it.
+    \f
+    The tool checks the data as fsapi-brand does (nanopb sizes, field and
+    enum names). A power loss keeps the old blob or the new blob, because a
+    littlefs rename is atomic. The device reads the blob at boot, so reset
+    the device to apply it.
+
+    Args:
+        ctx: The click context. ctx.obj holds the FsApi object.
+        yaml_file: The local .pb.yaml file.
+        path: The device file, for example /flash/etc/config/net.pb.
+        proto_paths: More proto directories after $PROTO_BASE.
+    """
+    from fsapi.brand import pbblob
+
+    with tempfile.TemporaryDirectory(prefix="pbblob-") as work:
+        try:
+            lib = pbblob.ProtoLib(pbblob.proto_search_path(proto_paths),
+                                  Path(work))
+            blob = pbblob.render(Path(yaml_file), lib)
+        except pbblob.BlobError as e:
+            blob_error(e)
+
+    fs = ctx.obj['fsapi']
+    tmp = f"{path}.tmp"
+    run(fs.put_file, tmp, blob.data)
+    run(fs.mv, tmp, path)
+    click.echo(f"{yaml_file} -> {path}: {len(blob.data)} B")
+
+
+@cli.command
+@click.argument('path')
+@click.option('--proto', required=True,
+              help="The proto file stem, for example NetConf.")
+@click.option('--message', required=True,
+              help="The message name, for example NetConf.")
+@click.option('-o', '--output', type=click.Path(dir_okay=False, writable=True),
+              default=None,
+              help="Write the YAML to this file, not to stdout.")
+@click.option('--proto-path', 'proto_paths', multiple=True,
+              type=click.Path(file_okay=False), help=PROTO_PATH_HELP)
+@click.pass_context
+def pbget(ctx: click.Context, path: str, proto: str, message: str,
+          output: Optional[str], proto_paths: tuple[str, ...]) -> None:
+    """Reads the protobuf blob PATH and writes it in the .pb.yaml form.
+    \f
+    The output has all fields, also the fields with the default value. It is
+    valid pbput input: get, edit, put.
+
+    Args:
+        ctx: The click context. ctx.obj holds the FsApi object.
+        path: The device file, for example /flash/etc/config/net.pb.
+        proto: The proto file stem.
+        message: The message name.
+        output: The local output file, or None for stdout.
+        proto_paths: More proto directories after $PROTO_BASE.
+    """
+    from fsapi.brand import pbblob
+
+    data = run(ctx.obj['fsapi'].get_file, path)
+    with tempfile.TemporaryDirectory(prefix="pbblob-") as work:
+        try:
+            lib = pbblob.ProtoLib(pbblob.proto_search_path(proto_paths),
+                                  Path(work))
+            text = pbblob.decode(data, proto, message, lib, source=path)
+        except pbblob.BlobError as e:
+            blob_error(e)
+
+    if output is None:
+        click.echo(text, nl=False)
+        return
+    Path(output).write_text(text)
+    click.echo(f"{path} -> {output} ({len(data)} B)")
 
 
 def entrypoint() -> None:

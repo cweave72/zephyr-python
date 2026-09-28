@@ -1,16 +1,19 @@
 """fsapi-brand: builds a littlefs image of a directory tree for a FsApi mount.
 
 Branding puts files into the flash file system of a device at build time, for
-example /flash/etc/config/net.conf. The tool:
+example /flash/etc/config/net.pb. The tool:
 
   1. reads <build>/fsapi_layout.json, which the firmware build writes from its
      devicetree (see common/modules/FsApi/scripts/fsapi_layout.py);
-  2. builds a littlefs image with the geometry of the mount, from a source
+  2. copies the source directory to <out>/stage. Each <name>.pb.yaml file
+     becomes a raw protobuf blob <name>.pb (see pbblob.py). The .pb.yaml
+     file is not copied;
+  3. builds a littlefs image with the geometry of the mount, from the stage
      directory. The directory maps to the mount root:
-     <src>/etc/config/net.conf -> /flash/etc/config/net.conf;
-  3. writes <out>/brand.bin (the partition content), <out>/brand.hex (the same
+     <stage>/etc/config/net.pb -> /flash/etc/config/net.pb;
+  4. writes <out>/brand.bin (the partition content), <out>/brand.hex (the same
      data at the absolute flash address) and <out>/brand.json (addresses);
-  4. mounts the image again and checks each file.
+  5. mounts the image again and checks each file.
 
 The image replaces the whole partition: branding erases the runtime files of
 the mount. `make brand` runs this tool and flashes the result.
@@ -20,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -36,6 +40,7 @@ logger = logging.getLogger(__name__)
 LFS_DISK_VERSION = 0x00020001
 
 LAYOUT_FILE = "fsapi_layout.json"
+BLOB_SUFFIX = ".pb.yaml"
 
 
 class BrandError(Exception):
@@ -105,6 +110,62 @@ def source_files(src_dir: str | Path) -> list[tuple[Path, bool]]:
                 continue
             out.append((rel_root / f, False))
     return out
+
+
+def stage_tree(src_dir: str | Path, stage_dir: Path, work_dir: Path,
+               proto_paths: tuple[str, ...]) -> dict[str, str]:
+    """Copies a source tree to the stage directory and renders the blobs.
+
+    The function deletes stage_dir first. Plain files are copied. Each
+    .pb.yaml file is rendered to its blob. The proto code loads only if the
+    tree has a .pb.yaml file.
+
+    Args:
+        src_dir: The root of the source tree.
+        stage_dir: The stage directory. The image is built from it.
+        work_dir: A scratch directory for the generated proto code.
+        proto_paths: More proto directories after $PROTO_BASE.
+
+    Returns:
+        For each blob, the device path relative to the mount (for example
+        '/etc/config/net.pb') and the name of its .pb.yaml file.
+
+    Raises:
+        BrandError: A blob is not correct, or two sources make one file.
+    """
+    if stage_dir.exists():
+        shutil.rmtree(stage_dir)
+    stage_dir.mkdir(parents=True)
+
+    blobs: list[Path] = []
+    for rel, is_dir in source_files(src_dir):
+        if is_dir:
+            (stage_dir / rel).mkdir()
+        elif rel.name.endswith(BLOB_SUFFIX):
+            blobs.append(rel)
+        else:
+            shutil.copy2(Path(src_dir) / rel, stage_dir / rel)
+    if not blobs:
+        return {}
+
+    from fsapi.brand import pbblob
+    sources: dict[str, str] = {}
+    try:
+        lib = pbblob.ProtoLib(pbblob.proto_search_path(proto_paths), work_dir)
+        for rel in blobs:
+            blob = pbblob.render(Path(src_dir) / rel, lib)
+            out_rel = rel.parent / blob.out
+            dev_path = "/" + out_rel.as_posix()
+            target = stage_dir / out_rel
+            if target.exists():
+                first = sources.get(dev_path, "a plain file")
+                raise BrandError(f"{rel} and {first} both make {dev_path}.")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(blob.data)
+            sources[dev_path] = rel.as_posix()
+    except pbblob.BlobError as e:
+        raise BrandError(str(e)) from e
+    return sources
 
 
 def make_fs(layout: dict[str, Any], mount: bool = True) -> LittleFS:
@@ -252,8 +313,12 @@ def write_outputs(layout: dict[str, Any], image: bytes,
                    "build has more than one.")
 @click.option("--out", "out_dir", default=None,
               help="The output directory (default <build>/brand).")
+@click.option("--proto-path", "proto_paths", multiple=True,
+              type=click.Path(file_okay=False),
+              help="A proto directory for the .pb.yaml files, after "
+                   "$PROTO_BASE. Repeat for more directories.")
 def cli(build_dir: str, src_dir: str, mount_point: Optional[str],
-        out_dir: Optional[str]) -> None:
+        out_dir: Optional[str], proto_paths: tuple[str, ...]) -> None:
     """Builds a littlefs brand image of SRC for a FsApi flash mount.
     \f
     Args:
@@ -261,13 +326,17 @@ def cli(build_dir: str, src_dir: str, mount_point: Optional[str],
         src_dir: The source tree.
         mount_point: The flash mount, or None for the only one.
         out_dir: The output directory, or None for <build>/brand.
+        proto_paths: More proto directories after $PROTO_BASE.
     """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     out_dir = out_dir or str(Path(build_dir) / "brand")
     try:
         layout = load_layout(build_dir, mount_point)
-        image, entries = build_image(layout, src_dir)
-        used = verify_image(layout, image, src_dir, entries)
+        stage = Path(out_dir) / "stage"
+        blobs = stage_tree(src_dir, stage, Path(out_dir) / "proto",
+                           proto_paths)
+        image, entries = build_image(layout, stage)
+        used = verify_image(layout, image, stage, entries)
         info = write_outputs(layout, image, out_dir)
     except BrandError as e:
         click.echo(f"error: {e}", err=True)
@@ -279,7 +348,8 @@ def cli(build_dir: str, src_dir: str, mount_point: Optional[str],
                f"(partition offset {info['partition_offset']}), "
                f"{used} of {blocks} blocks used.")
     for dev_path, size in entries:
-        click.echo(f"  {layout['mount_point']}{dev_path}  ({size} B)")
+        source = f"  <- {blobs[dev_path]}" if dev_path in blobs else ""
+        click.echo(f"  {layout['mount_point']}{dev_path}  ({size} B){source}")
     click.echo(f"Wrote {out_dir}/brand.bin, brand.hex, brand.json.")
 
 

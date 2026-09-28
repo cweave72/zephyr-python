@@ -7,6 +7,7 @@ to the littlefs file systems of a Zephyr device, for example `/flash` and
 1. **`fsapi-cli`**. A command line tool: list, copy, move, remove and format.
 2. **`FsApi` class**. A Python API for scripts and tests.
 3. **`fsapi-brand`**. Builds a littlefs image of a directory for branding.
+   It converts `.pb.yaml` files to protobuf blobs.
 
 The device code is in `common/modules/FsApi`. The callset is defined in
 `proto/FsApiRpc/FsApiRpc.proto`. `applications/fs_demo` is an example
@@ -36,21 +37,23 @@ All paths on the device are absolute and include the mount point, for example
 fsapi-cli --ip <device-ip> <command> [ARGS]
 ```
 
-| Command                | Description                                                                          |
-|------------------------|--------------------------------------------------------------------------------------|
-| `mounts`               | Lists the mount points.                                                              |
-| `df [PATH]`            | Shows the size, used and free space of each mount, or of the mount which holds PATH. |
-| `ls PATH`              | Lists a directory: type, size and name.                                              |
-| `tree PATH`            | Shows a directory and all its subdirectories as a tree.                              |
-| `stat PATH`            | Shows the type and size of a path.                                                   |
-| `cat PATH`             | Writes a device file to stdout.                                                      |
-| `get PATH DEST`        | Copies the device file PATH to the local file DEST.                                  |
-| `put SRC PATH`         | Copies the local file SRC to the device file PATH.                                   |
-| `rm PATH`              | Removes a file or an empty directory.                                                |
-| `mv SRC DST`           | Renames or moves a file or directory on one mount.                                   |
-| `mkdir PATH`           | Creates a directory.                                                                 |
-| `closeall`             | Closes all file and directory handles on the device.                                 |
-| `format MOUNT [--yes]` | Erases the mount MOUNT, for example `/ram`. Asks for confirmation without `--yes`.   |
+| Command                                      | Description                                                                                 |
+|----------------------------------------------|---------------------------------------------------------------------------------------------|
+| `mounts`                                     | Lists the mount points.                                                                     |
+| `df [PATH]`                                  | Shows the size, used and free space of each mount, or of the mount which holds PATH.        |
+| `ls PATH`                                    | Lists a directory: type, size and name.                                                     |
+| `tree PATH`                                  | Shows a directory and all its subdirectories as a tree.                                     |
+| `stat PATH`                                  | Shows the type and size of a path.                                                          |
+| `cat PATH`                                   | Writes a device file to stdout.                                                             |
+| `get PATH DEST`                              | Copies the device file PATH to the local file DEST.                                         |
+| `put SRC PATH`                               | Copies the local file SRC to the device file PATH.                                          |
+| `rm PATH`                                    | Removes a file or an empty directory.                                                       |
+| `mv SRC DST`                                 | Renames or moves a file or directory on one mount.                                          |
+| `mkdir PATH`                                 | Creates a directory.                                                                        |
+| `closeall`                                   | Closes all file and directory handles on the device.                                        |
+| `format MOUNT [--yes]`                       | Erases the mount MOUNT, for example `/ram`. Asks for confirmation without `--yes`.          |
+| `pbput YAML PATH`                            | Writes a `.pb.yaml` file as a protobuf blob to PATH. See [Protobuf blobs](#protobuf-blobs). |
+| `pbget PATH --proto P --message M [-o FILE]` | Writes the blob PATH in the `.pb.yaml` form to stdout, or to FILE.                          |
 
 The common ProtoRpc options apply, for example `--ip`, `--port` (default
 13001) and `--refresh-bindings`. Run `fsapi-cli --help` for the full list.
@@ -110,24 +113,115 @@ fsapi-brand --build applications/fs_demo/build \
             --src applications/fs_demo/brand/default
 ```
 
-| Option          | Description                                                           |
-|-----------------|-----------------------------------------------------------------------|
-| `--build DIR`   | The application build directory. It holds `fsapi_layout.json`.        |
-| `--src DIR`     | The directory tree. It maps to the mount root. Dot files are skipped. |
-| `--mount MOUNT` | The flash mount, for example `/flash`. Required for more mounts.      |
-| `--out DIR`     | The output directory. The default is `<build>/brand`.                 |
+| Option             | Description                                                                                      |
+|--------------------|--------------------------------------------------------------------------------------------------|
+| `--build DIR`      | The application build directory. It holds `fsapi_layout.json`.                                   |
+| `--src DIR`        | The directory tree. It maps to the mount root. Dot files are skipped.                            |
+| `--mount MOUNT`    | The flash mount, for example `/flash`. Required for more mounts.                                 |
+| `--out DIR`        | The output directory. The default is `<build>/brand`.                                            |
+| `--proto-path DIR` | A proto directory for the `.pb.yaml` files, after `$PROTO_BASE`. Repeat it for more directories. |
 
 Output:
 
 ```
 Brand image for /flash: 131072 B at 0x101e0000 (partition offset 0x1e0000), 6 of 32 blocks used.
-  /flash/etc/config/net.conf  (243 B)
+  /flash/etc/config/net.pb  (44 B)  <- etc/config/net.pb.yaml
 Wrote applications/fs_demo/build/brand/brand.bin, brand.hex, brand.json.
 ```
 
-The tool uses `littlefs-python` and pins the littlefs on-disk format to 2.1,
-the format of the device littlefs. After it writes the image, it mounts the
-image again and compares each file.
+The tool copies the source tree to `<out>/stage`, converts each `.pb.yaml`
+file, and builds the image from the stage directory. It uses
+`littlefs-python` and pins the littlefs on-disk format to 2.1, the format of
+the device littlefs. After it writes the image, it mounts the image again and
+compares each file.
+
+## Protobuf blobs
+
+A `<name>.pb.yaml` file in the brand tree describes one protobuf message.
+`fsapi-brand` writes the message as the raw protobuf file `<name>.pb` in the
+same directory. The `.pb.yaml` file is not in the image. The firmware reads
+the blob with `FsApi_unpack_file` into the nanopb struct of the same
+`.proto` (see `common/modules/FsApi/README.md`).
+
+```yaml
+# brand/default/etc/config/net.pb.yaml -> /flash/etc/config/net.pb
+proto: NetConf           # the proto file stem
+message: NetConf         # the message name in the proto package
+# out: net.pb            # optional; default: the file name minus .yaml
+data:
+  ipv4:
+    mode: IPV4_MODE_STATIC
+    address: 192.168.1.16
+    netmask: 255.255.255.0
+    gateway: 192.168.1.1
+```
+
+Rules:
+
+- `data` keys are the proto field names.
+- An enum field takes a value name of the `.proto` enum, for example
+  `IPV4_MODE_DHCP`. Numbers are not accepted.
+- A `bytes` field takes a base64 string.
+- A nested message is `Outer.Inner`. The package prefix is optional.
+- `out` is a path relative to the directory of the `.pb.yaml` file.
+- A `.pb.yaml` file and a plain file which make the same path give an error.
+
+**Proto search path.** The tool finds `<proto>.proto` in `$PROTO_BASE` and
+in each `--proto-path` directory. `make brandimage` adds the workspace
+`proto/` directory and the application `proto/` directory. The same `.proto`
+makes the nanopb struct in the firmware (`nanopb_build_sources`), so the two
+sides cannot differ. A stem which is in more than one directory is an error.
+
+**Bindings.** The tool compiles the proto at each run: betterproto bindings
+for the encoding, and a protoc descriptor set for the checks. The generated
+code is in `<out>/proto`. It needs no `uv sync`.
+
+**Checks.** The firmware decodes the blob into a struct of fixed size. A
+value which does not fit makes `pb_decode` fail on the device, and a field
+with no nanopb size becomes a `pb_callback_t`, which `Pb_unpack` drops with
+no error. Thus the tool checks the data against the inline `[(nanopb)...]`
+options and stops with exit status 1. It shows all errors of a file at one
+time:
+
+| Check                                         | Example error                                                                          |
+|-----------------------------------------------|----------------------------------------------------------------------------------------|
+| Field name exists                             | `ipv4.adress: Ipv4 has no field 'adress'. Fields: mode, address, netmask, gateway`     |
+| Enum value name exists                        | `ipv4.mode: 'DHCP' is not a value of enum Ipv4Mode (IPV4_MODE_STATIC, IPV4_MODE_DHCP)` |
+| String size, with the NUL                     | `ipv4.address: 18 B (with the NUL) > max_size 16`                                      |
+| Bytes size                                    | `raw: 3 B > max_size 2`                                                                |
+| Repeated and map count                        | `nums: 3 items > max_count 2`                                                          |
+| String, bytes and repeated fields have a size | `names items: the field has no (nanopb).max_size. nanopb makes a callback field, ...`  |
+| One member of a oneof                         | `b: 'a' and 'b' are in one oneof (pick). Set only one.`                                |
+| Value type: string, integer, number, bool     | `flag: must be true or false`                                                          |
+
+The tool does not read nanopb `.options` files. It writes a warning if a
+`.options` file is next to the proto.
+
+### Update a blob on a running device
+
+`pbget` reads a blob and writes the `.pb.yaml` form. `pbput` does the same
+checks as `fsapi-brand`, writes `PATH.tmp` and renames it to `PATH`. A
+littlefs rename is atomic, so a power loss keeps the old blob or the new
+blob. The firmware reads the blob at boot. Reset the device to apply it.
+
+```sh
+fsapi-cli --ip 192.168.1.16 pbget /flash/etc/config/net.pb \
+    --proto NetConf --message NetConf \
+    --proto-path applications/fs_demo/proto -o net.pb.yaml
+# Edit net.pb.yaml.
+fsapi-cli --ip 192.168.1.16 pbput net.pb.yaml /flash/etc/config/net.pb \
+    --proto-path applications/fs_demo/proto
+```
+
+The `pbget` output has all fields, also the fields with the default value,
+so you can see each field to edit. It does not write a submessage which is
+not in the blob, or a oneof member which is not set. Thus `pbput` of the
+output makes the same blob. A blob which is not a valid message gives an
+error:
+
+```
+error: /flash/etc/config/net.pb: not a valid NetConf message: index out of range
+```
 
 ## FsApi class
 
