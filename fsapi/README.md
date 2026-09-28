@@ -167,7 +167,8 @@ Rules:
 - A `.pb.yaml` file and a plain file which make the same path give an error.
 
 **Proto search path.** The tool finds `<proto>.proto` in `$PROTO_BASE` and
-in each `--proto-path` directory. `make brandimage` adds the workspace
+in each `--proto-path` directory. `fsapi-cli` needs `--proto-path` only for a
+proto outside `$PROTO_BASE`, for example an application `proto/` directory. `make brandimage` adds the workspace
 `proto/` directory and the application `proto/` directory. The same `.proto`
 makes the nanopb struct in the firmware (`nanopb_build_sources`), so the two
 sides cannot differ. A stem which is in more than one directory is an error.
@@ -206,11 +207,9 @@ blob. The firmware reads the blob at boot. Reset the device to apply it.
 
 ```sh
 fsapi-cli --ip 192.168.1.16 pbget /flash/etc/config/net.pb \
-    --proto NetConf --message NetConf \
-    --proto-path applications/fs_demo/proto -o net.pb.yaml
+    --proto NetConf --message NetConf -o net.pb.yaml
 # Edit net.pb.yaml.
-fsapi-cli --ip 192.168.1.16 pbput net.pb.yaml /flash/etc/config/net.pb \
-    --proto-path applications/fs_demo/proto
+fsapi-cli --ip 192.168.1.16 pbput net.pb.yaml /flash/etc/config/net.pb
 ```
 
 The `pbget` output has all fields, also the fields with the default value,

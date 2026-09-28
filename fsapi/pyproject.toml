@@ -11,8 +11,8 @@ dependencies = [
     "littlefs-python>=0.12",
     "intelhex>=2.3.0",
     "proto_builder",
-    "grpcio-tools",
-    "pyyaml",
+    "grpcio-tools>=1.70",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
