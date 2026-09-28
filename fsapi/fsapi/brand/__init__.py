@@ -15,11 +15,14 @@ example /flash/etc/config/net.conf. The tool:
 The image replaces the whole partition: branding erases the runtime files of
 the mount. `make brand` runs this tool and flashes the result.
 """
+from __future__ import annotations
+
 import json
 import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any, Optional
 
 import click
 from intelhex import IntelHex
@@ -36,11 +39,26 @@ LAYOUT_FILE = "fsapi_layout.json"
 
 
 class BrandError(Exception):
-    pass
+    """A branding step failed. The message tells the user what to do."""
 
 
-def load_layout(build_dir, mount_point):
-    """-> the layout entry of mount_point from <build_dir>/fsapi_layout.json."""
+def load_layout(build_dir: str | Path,
+                mount_point: Optional[str]) -> dict[str, Any]:
+    """Reads the layout of one flash mount from <build_dir>/fsapi_layout.json.
+
+    Args:
+        build_dir: The application build directory.
+        mount_point: The mount point, for example '/flash'. None selects the
+            only flash mount of the build.
+
+    Returns:
+        The layout entry of the mount (see fsapi_layout.py).
+
+    Raises:
+        BrandError: The file does not exist, has no flash mount, or does
+            not have mount_point. None with more than one mount is also an
+            error.
+    """
     path = Path(build_dir) / LAYOUT_FILE
     if not path.is_file():
         raise BrandError(f"{path} does not exist. Build the application first "
@@ -63,9 +81,18 @@ def load_layout(build_dir, mount_point):
                      f"Flash mounts: {names}.")
 
 
-def source_files(src_dir):
-    """-> sorted list of (relative dir or file path, is_dir). Dot files and
-    dot directories are skipped, for example .gitkeep."""
+def source_files(src_dir: str | Path) -> list[tuple[Path, bool]]:
+    """Lists the directories and files of a source tree.
+
+    Dot files and dot directories are skipped, for example .gitkeep. A
+    directory comes before its content.
+
+    Args:
+        src_dir: The root of the source tree.
+
+    Returns:
+        A sorted list of (path relative to src_dir, is_dir).
+    """
     src = Path(src_dir)
     out = []
     for root, dirs, files in os.walk(src):
@@ -80,8 +107,21 @@ def source_files(src_dir):
     return out
 
 
-def make_fs(layout, mount=True):
-    """-> a LittleFS object with the geometry of the layout."""
+def make_fs(layout: dict[str, Any], mount: bool = True) -> LittleFS:
+    """Makes a littlefs object with the geometry of a mount.
+
+    Args:
+        layout: The layout entry of the mount.
+        mount: True formats and mounts a new file system. False only
+            creates the object, for example to load an image.
+
+    Returns:
+        The LittleFS object, with the device on-disk format version.
+
+    Raises:
+        BrandError: The partition size is not a multiple of the erase block
+            size.
+    """
     block_size = layout["erase_block_size"]
     size = layout["partition_size"]
     if size % block_size:
@@ -100,8 +140,22 @@ def make_fs(layout, mount=True):
     )
 
 
-def build_image(layout, src_dir):
-    """-> (image bytes, list of (device path, size)) for the source tree."""
+def build_image(layout: dict[str, Any],
+                src_dir: str | Path) -> tuple[bytes, list[tuple[str, int]]]:
+    """Builds a littlefs image of a source tree.
+
+    Args:
+        layout: The layout entry of the mount.
+        src_dir: The root of the source tree. It maps to the mount root.
+
+    Returns:
+        A tuple (image, entries). The image is the full partition content.
+        Each entry is (device path relative to the mount, size in bytes)
+        for one file.
+
+    Raises:
+        BrandError: A file does not fit into the partition.
+    """
     fs = make_fs(layout)
     entries = []
     for rel, is_dir in source_files(src_dir):
@@ -121,8 +175,22 @@ def build_image(layout, src_dir):
     return bytes(fs.context.buffer), entries
 
 
-def verify_image(layout, image, src_dir, entries):
-    """Mounts the image again and compares each file with its source."""
+def verify_image(layout: dict[str, Any], image: bytes, src_dir: str | Path,
+                 entries: list[tuple[str, int]]) -> int:
+    """Mounts an image again and compares each file with its source.
+
+    Args:
+        layout: The layout entry of the mount.
+        image: The image from build_image.
+        src_dir: The root of the source tree.
+        entries: The entries from build_image.
+
+    Returns:
+        The number of used blocks in the image.
+
+    Raises:
+        BrandError: A file in the image differs from its source.
+    """
     fs = make_fs(layout, mount=False)
     fs.context.buffer[:] = image
     fs.mount()
@@ -137,8 +205,19 @@ def verify_image(layout, image, src_dir, entries):
     return used
 
 
-def write_outputs(layout, image, out_dir):
-    """Writes brand.bin, brand.hex and brand.json. -> dict of the addresses."""
+def write_outputs(layout: dict[str, Any], image: bytes,
+                  out_dir: str | Path) -> dict[str, Any]:
+    """Writes brand.bin, brand.hex, brand.json and partition_offset.
+
+    Args:
+        layout: The layout entry of the mount.
+        image: The image from build_image.
+        out_dir: The output directory. The function creates it if necessary.
+
+    Returns:
+        The content of brand.json: mount point, partition offset and size,
+        and flash address.
+    """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     address = layout["flash_base"] + layout["partition_offset"]
@@ -173,8 +252,16 @@ def write_outputs(layout, image, out_dir):
                    "build has more than one.")
 @click.option("--out", "out_dir", default=None,
               help="The output directory (default <build>/brand).")
-def cli(build_dir, src_dir, mount_point, out_dir):
-    """Builds a littlefs brand image of SRC for a FsApi flash mount."""
+def cli(build_dir: str, src_dir: str, mount_point: Optional[str],
+        out_dir: Optional[str]) -> None:
+    """Builds a littlefs brand image of SRC for a FsApi flash mount.
+    \f
+    Args:
+        build_dir: The application build directory.
+        src_dir: The source tree.
+        mount_point: The flash mount, or None for the only one.
+        out_dir: The output directory, or None for <build>/brand.
+    """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     out_dir = out_dir or str(Path(build_dir) / "brand")
     try:
@@ -196,7 +283,8 @@ def cli(build_dir, src_dir, mount_point, out_dir):
     click.echo(f"Wrote {out_dir}/brand.bin, brand.hex, brand.json.")
 
 
-def entrypoint():
+def entrypoint() -> None:
+    """Runs the CLI (the fsapi-brand console script)."""
     cli()
 
 
