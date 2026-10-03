@@ -36,3 +36,6 @@ trace-tool = { path = "trace_tool", editable = true }
 tracemodule = { path = "tracemodule", editable = true }
 subscriber = { path = "subscriber", editable = true }
 app-generator = { path = "app_generator", editable = true }
+
+[tool.uv]
+package = false
