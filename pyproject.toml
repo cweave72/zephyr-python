@@ -16,9 +16,16 @@ dependencies = [
     "tracemodule",
     "subscriber",
     "app-generator",
+    "dxlora",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
 ]
 
 [tool.uv.sources]
+dxlora = { path = "dxlora", editable = true }
 protorpc = { path = "protorpc", editable = true }
 api-generator = { path = "api_generator", editable = true }
 protorpcheader = { path = "protorpcheader", editable = true }
